@@ -26,7 +26,7 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      - name Lint 
+      - name: Lint 
         run: docker run --rm blackflow:test npm run lint
     
       - name: Verify build
