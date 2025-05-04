@@ -30,8 +30,4 @@ jobs:
         run: docker run --rm blackflow:test npm run lint
     
       - name: Verify build
-        run: |
-          echo "✅ Build successful!"
-          echo "✅ Linting passed!"
-          echo "✅ Tests passed!"
-      #add tests later
+        run: echo "✅ Build successful!"
