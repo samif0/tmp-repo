@@ -34,12 +34,9 @@ jobs:
         if_key_exists: replace
 
     - name: Deploy to EC2
-      run: |
-        scp docker-compose.yml Dockerfile ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }}:~/app/
-    
-        # Connect to EC2 and deploy
+      run: | 
         ssh ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }} << 'ENDSSH'
-          cd ~/app
+          cd ~/app/blackflow
       
           # Pull latest code
           git pull || git clone https://github.com/samif0/blackflow.git .
