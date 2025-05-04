@@ -1,0 +1,5 @@
+[sami] Figure out how to setup docker and get project running in an EC2
+[sami & amir] Setup API layer
+[amir] Figure out how to get authentication setup
+
+[amir] How are we gonna get financial data?
