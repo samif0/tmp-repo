@@ -1,7 +1,5 @@
 name: CD
 
-name: CD
-
 on:
   push:
     branches: [ main ]
@@ -27,3 +25,31 @@ jobs:
         cache-to: type=gha,mode=max
     - name: Verify build
       run: echo "✅ Production build successful!"
+
+    - name: Install SSH key
+      uses: shimataro/ssh-key-action@v2
+      with:
+        key: ${{ secrets.SSH_PRIVATE_KEY }}
+        known_hosts: ${{ secrets.SSH_KNOWN_HOSTS }}
+        if_key_exists: replace
+
+    - name: Deploy to EC2
+      run: |
+        scp docker-compose.yml Dockerfile ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }}:~/app/
+    
+        # Connect to EC2 and deploy
+        ssh ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }} << 'ENDSSH'
+          cd ~/app
+      
+          # Pull latest code
+          git pull || git clone https://github.com/samif0/blackflow.git .
+      
+          # Build and restart Docker container
+          docker-compose down
+          docker-compose up -d blackflow-prod
+      
+          # Clean up old images
+          docker image prune -af
+      
+          echo "Deployment complete!"
+        ENDSSH
