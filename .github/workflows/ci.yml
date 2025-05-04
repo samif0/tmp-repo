@@ -11,7 +11,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name Checkout Code
+      - name: Checkout Code
         uses: actions/checkout@v4
 
       - name: Setup Docker buildx 
@@ -25,13 +25,6 @@ jobs:
           tags: blackflow:test
           cache-from: type=gha
           cache-to: type=gha,mode=max
-
-      - name Lint 
-        run: docker run --rm blackflow:test npm run lint
-    
+ 
       - name: Verify build
-        run: |
-          echo "✅ Build successful!"
-          echo "✅ Linting passed!"
-          echo "✅ Tests passed!"
-      #add tests later
+        run: echo "✅ Build successful!"

@@ -26,7 +26,4 @@ jobs:
         cache-from: type=gha
         cache-to: type=gha,mode=max
     - name: Verify build
-        run: |
-          echo "✅ Production build successful!"
-          echo "🔍 Docker image created successfully but not deployed (EC2 not configured yet)"
-          echo "Image: blackflow:latest"
+        run: echo "✅ Production build successful!"
