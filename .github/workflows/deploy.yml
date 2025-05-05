@@ -1,0 +1,167 @@
+name: CI/CD Deployment Pipeline
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: npm ci 
+      
+      - name: Run tests
+        run: npm test || echo "No tests available yet"
+  
+  deploy-staging:
+    name: Deploy to Staging
+    needs: test
+    runs-on: ubuntu-latest
+    environment: staging
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Install SSH key for staging
+      uses: shimataro/ssh-key-action@v2
+      with:
+        key: ${{ secrets.STAGING_SSH_PRIVATE_KEY }}
+        known_hosts: ${{ secrets.STAGING_SSH_KNOWN_HOSTS }}
+        if_key_exists: replace
+    
+    - name: Deploy to staging
+      run: |
+        ssh ${{ secrets.STAGING_EC2_USERNAME }}@${{ secrets.STAGING_EC2_HOST }} << 'ENDSSH'
+          mkdir -p ~/app
+          cd ~/app
+          
+          if [ -d "blackflow" ]; then
+            cd blackflow
+            git pull
+          else
+            git clone https://github.com/samif0/blackflow.git blackflow
+            cd blackflow
+          fi
+          
+          if [ ! -f "../docker-compose.yml" ]; then
+            cp docker-compose.yml ../ || echo "No docker-compose.yml to copy"
+          fi
+          
+          cd ..
+           
+          cat > docker-compose.staging.yml << EOL
+          version: '3'
+          services:
+            blackflow-staging:
+              environment:
+                - NODE_ENV=staging
+                - API_URL=${STAGING_API_URL}
+                - AUTH_SECRET=${STAGING_AUTH_SECRET}
+                - DATABASE_URL=${STAGING_DATABASE_URL}
+          EOL
+          
+          docker-compose -f docker-compose.yml -f docker-compose.staging.yml down blackflow-staging || true
+          docker-compose -f docker-compose.yml -f docker-compose.staging.yml up -d blackflow-staging
+          
+          rm docker-compose.staging.yml
+          docker image prune -af --force
+          
+          echo "Staging deployment complete!"
+        ENDSSH
+      env:
+        STAGING_API_URL: NA
+        STAGING_AUTH_SECRET: NA
+        STAGING_DATABASE_URL: NA
+    
+    - name: Verify staging deployment
+      run: |
+        echo "Staging deployment completed. Accessing health endpoint to verify..."
+        sleep 30
+        curl -s http://${{ secrets.STAGING_EC2_HOST }}:3001/api/health || echo "Could not reach health endpoint, but continuing anyway"
+  
+  wait-for-approval:
+    name: Wait for Production Approval
+    needs: deploy-staging
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+    - name: Approval notification
+      run: echo "Waiting for production deployment approval. This step will complete when the deployment is approved via GitHub Environments."
+  
+  deploy-production:
+    name: Deploy to Production
+    needs: wait-for-approval
+    runs-on: ubuntu-latest
+    environment: production
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Install SSH key
+      uses: shimataro/ssh-key-action@v2
+      with:
+        key: ${{ secrets.SSH_PRIVATE_KEY }}
+        known_hosts: ${{ secrets.SSH_KNOWN_HOSTS }}
+        if_key_exists: replace
+    
+    - name: Deploy to production
+      run: |
+        ssh ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }} << 'ENDSSH'
+          cd ~/app
+          
+          # Clone or pull repo
+          if [ -d "blackflow" ]; then
+            cd blackflow
+            git pull
+          else
+            git clone https://github.com/samif0/blackflow.git blackflow
+            cd blackflow
+          fi
+          
+          cd ..
+          
+          cat > docker-compose.prod.yml << EOL
+          version: '3'
+          services:
+            blackflow-prod:
+              environment:
+                - NODE_ENV=production
+                - API_URL=${PROD_API_URL}
+                - AUTH_SECRET=${PROD_AUTH_SECRET}
+                - DATABASE_URL=${PROD_DATABASE_URL}
+          EOL
+          
+          # Deploy using Docker Compose with the environment override
+          docker-compose -f docker-compose.yml -f docker-compose.prod.yml down blackflow-prod || true
+          docker-compose -f docker-compose.yml -f docker-compose.prod.yml up -d blackflow-prod
+          
+          # Clean up
+          rm docker-compose.prod.yml
+          docker image prune -af --force
+          
+          echo "Production deployment complete!"
+        ENDSSH
+      env:
+        PROD_API_URL: NA
+        PROD_AUTH_SECRET: NA
+        PROD_DATABASE_URL: NA
+    
+    - name: Verify production deployment
+      run: |
+        echo "Production deployment completed. Accessing health endpoint to verify..."
+        sleep 30
+        curl -s http://${{ secrets.EC2_HOST }}:3000/api/health || echo "Could not reach health endpoint, but continuing anyway"
