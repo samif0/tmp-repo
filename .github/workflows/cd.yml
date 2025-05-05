@@ -25,5 +25,23 @@ jobs:
         tags: blackflow:latest
         cache-from: type=gha
         cache-to: type=gha,mode=max
-    - name: Verify build
-        run: echo "✅ Production build successful!"
+
+    - name: Install SSH key
+      uses: shimataro/ssh-key-action@v2
+      with:
+        key: ${{ secrets.SSH_PRIVATE_KEY }}
+        known_hosts: ${{ secrets.SSH_KNOWN_HOSTS }}
+        if_key_exists: replace
+
+    - name: Deploy to EC2
+      run: | 
+        ssh ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }} << 'ENDSSH'
+          cd ~/app/blackflow
+      
+          git pull || git clone https://github.com/samif0/blackflow.git .
+      
+          docker-compose down
+          docker-compose up -d blackflow-prod
+      
+          docker image prune -af 
+        ENDSSH

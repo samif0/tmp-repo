@@ -24,7 +24,4 @@ jobs:
           load: true
           tags: blackflow:test
           cache-from: type=gha
-          cache-to: type=gha,mode=max
- 
-      - name: Verify build
-        run: echo "✅ Build successful!"
+          cache-to: type=gha,mode=max 
