@@ -42,9 +42,28 @@ jobs:
         known_hosts: ${{ secrets.STAGING_SSH_KNOWN_HOSTS }}
         if_key_exists: replace
     
+    - name: Create staging compose file
+      run: |
+        echo "version: '3'" > docker-compose.staging.yml
+        echo "services:" >> docker-compose.staging.yml
+        echo "  blackflow-staging:" >> docker-compose.staging.yml
+        echo "    environment:" >> docker-compose.staging.yml
+        echo "      - NODE_ENV=staging" >> docker-compose.staging.yml
+        echo "      - API_URL=${STAGING_API_URL}" >> docker-compose.staging.yml
+        echo "      - AUTH_SECRET=${STAGING_AUTH_SECRET}" >> docker-compose.staging.yml
+        echo "      - DATABASE_URL=${STAGING_DATABASE_URL}" >> docker-compose.staging.yml
+      env:
+        STAGING_API_URL: NA
+        STAGING_AUTH_SECRET: NA
+        STAGING_DATABASE_URL: NA
+    
+    - name: Copy staging compose file to server
+      run: |
+        scp docker-compose.staging.yml ${{ secrets.STAGING_EC2_USERNAME }}@${{ secrets.STAGING_EC2_HOST }}:~/docker-compose.staging.yml
+    
     - name: Deploy to staging
       run: |
-        ssh ${{ secrets.STAGING_EC2_USERNAME }}@${{ secrets.STAGING_EC2_HOST }} << 'ENDSSH'
+        ssh ${{ secrets.STAGING_EC2_USERNAME }}@${{ secrets.STAGING_EC2_HOST }} 'bash -s' << 'ENDSSH'
           mkdir -p ~/app
           cd ~/app
           
@@ -61,35 +80,25 @@ jobs:
           fi
           
           cd ..
-           
-          cat > docker-compose.staging.yml << EOF
-          version: '3'
-          services:
-            blackflow-staging:
-              environment:
-                - NODE_ENV=staging
-                - API_URL=${STAGING_API_URL}
-                - AUTH_SECRET=${STAGING_AUTH_SECRET}
-                - DATABASE_URL=${STAGING_DATABASE_URL}
-          EOF
           
+          # Move the compose file from home directory
+          mv ~/docker-compose.staging.yml ./
+          
+          # Deploy using Docker Compose
           docker-compose -f docker-compose.yml -f docker-compose.staging.yml down blackflow-staging || true
           docker-compose -f docker-compose.yml -f docker-compose.staging.yml up -d blackflow-staging
           
+          # Clean up
           rm docker-compose.staging.yml
           docker image prune -af --force
           
           echo "Staging deployment complete!"
         ENDSSH
-      env:
-        STAGING_API_URL: NA
-        STAGING_AUTH_SECRET: NA
-        STAGING_DATABASE_URL: NA
     
     - name: Verify staging deployment
       run: |
         echo "Staging deployment completed. Accessing health endpoint to verify..."
-        sleep 30
+        sleep 10
         curl -s http://${{ secrets.STAGING_EC2_HOST }}:3001/api/health || echo "Could not reach health endpoint, but continuing anyway"
   
   wait-for-approval:
@@ -118,12 +127,30 @@ jobs:
         known_hosts: ${{ secrets.SSH_KNOWN_HOSTS }}
         if_key_exists: replace
     
+    - name: Create production compose file
+      run: |
+        echo "version: '3'" > docker-compose.prod.yml
+        echo "services:" >> docker-compose.prod.yml
+        echo "  blackflow-prod:" >> docker-compose.prod.yml
+        echo "    environment:" >> docker-compose.prod.yml
+        echo "      - NODE_ENV=production" >> docker-compose.prod.yml
+        echo "      - API_URL=${PROD_API_URL}" >> docker-compose.prod.yml
+        echo "      - AUTH_SECRET=${PROD_AUTH_SECRET}" >> docker-compose.prod.yml
+        echo "      - DATABASE_URL=${PROD_DATABASE_URL}" >> docker-compose.prod.yml
+      env:
+        PROD_API_URL: NA
+        PROD_AUTH_SECRET: NA
+        PROD_DATABASE_URL: NA
+    
+    - name: Copy production compose file to server
+      run: |
+        scp docker-compose.prod.yml ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }}:~/docker-compose.prod.yml
+    
     - name: Deploy to production
       run: |
-        ssh ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }} << 'ENDSSH'
+        ssh ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }} 'bash -s' << 'ENDSSH'
           cd ~/app
           
-          # Clone or pull repo
           if [ -d "blackflow" ]; then
             cd blackflow
             git pull
@@ -134,34 +161,20 @@ jobs:
           
           cd ..
           
-          cat > docker-compose.prod.yml << EOF
-          version: '3'
-          services:
-            blackflow-prod:
-              environment:
-                - NODE_ENV=production
-                - API_URL=${PROD_API_URL}
-                - AUTH_SECRET=${PROD_AUTH_SECRET}
-                - DATABASE_URL=${PROD_DATABASE_URL}
-          EOF
+          mv ~/docker-compose.prod.yml ./
           
-          # Deploy using Docker Compose with the environment override
+          # Deploy using Docker Compose
           docker-compose -f docker-compose.yml -f docker-compose.prod.yml down blackflow-prod || true
           docker-compose -f docker-compose.yml -f docker-compose.prod.yml up -d blackflow-prod
           
-          # Clean up
           rm docker-compose.prod.yml
           docker image prune -af --force
           
           echo "Production deployment complete!"
         ENDSSH
-      env:
-        PROD_API_URL: NA
-        PROD_AUTH_SECRET: NA
-        PROD_DATABASE_URL: NA
     
     - name: Verify production deployment
       run: |
         echo "Production deployment completed. Accessing health endpoint to verify..."
-        sleep 30
+        sleep 10
         curl -s http://${{ secrets.EC2_HOST }}:3000/api/health || echo "Could not reach health endpoint, but continuing anyway"
