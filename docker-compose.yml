@@ -1,24 +1,52 @@
+
+version: '3'
+
 services: 
   blackflow-prod:
     build:
-      context: .
+      context: ./blackflow
       dockerfile: Dockerfile
+      args:
+        - NODE_ENV=production
     ports:
       - "3000:3000"
     environment: 
       - NODE_ENV=production
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+  blackflow-staging:
+    build:
+      context: ./blackflow
+      dockerfile: Dockerfile
+      args:
+        - NODE_ENV=staging
+    ports:
+      - "3001:3000"
+    environment: 
+      - NODE_ENV=staging
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
 
   blackflow-dev:
     build:
-      context: .
+      context: ./blackflow
       dockerfile: Dockerfile.dev
     ports:
-      - "3000:3000"
+      - "3002:3000"
     volumes:
-      - ./:/app
+      - ./blackflow:/app
       - /app/node_modules
     environment: 
       - NODE_ENV=development
     command: npm run dev
-
