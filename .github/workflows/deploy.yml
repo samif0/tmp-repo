@@ -62,16 +62,15 @@ jobs:
           
           cd ..
            
-          cat > docker-compose.staging.yml << EOL
+          cat > docker-compose.staging.yml << EOF
           version: '3'
           services:
             blackflow-staging:
               environment:
                 - NODE_ENV=staging
                 - API_URL=${STAGING_API_URL}
-                - AUTH_SECRET=${STAGING_AUTH_SECRET}
+        - AUTH_SECRET=${STAGING_AUTH_SECRET}
                 - DATABASE_URL=${STAGING_DATABASE_URL}
-          EOL
           
           docker-compose -f docker-compose.yml -f docker-compose.staging.yml down blackflow-staging || true
           docker-compose -f docker-compose.yml -f docker-compose.staging.yml up -d blackflow-staging
@@ -134,7 +133,7 @@ jobs:
           
           cd ..
           
-          cat > docker-compose.prod.yml << EOL
+          cat > docker-compose.prod.yml << EOF
           version: '3'
           services:
             blackflow-prod:
@@ -143,7 +142,6 @@ jobs:
                 - API_URL=${PROD_API_URL}
                 - AUTH_SECRET=${PROD_AUTH_SECRET}
                 - DATABASE_URL=${PROD_DATABASE_URL}
-          EOL
           
           # Deploy using Docker Compose with the environment override
           docker-compose -f docker-compose.yml -f docker-compose.prod.yml down blackflow-prod || true
