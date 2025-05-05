@@ -75,9 +75,7 @@ jobs:
             cd blackflow
           fi
           
-          if [ ! -f "../docker-compose.yml" ]; then
-            cp docker-compose.yml ../ || echo "No docker-compose.yml to copy"
-          fi
+          cp docker-compose.yml ../ || echo "No docker-compose.yml to copy"
           
           cd ..
           
