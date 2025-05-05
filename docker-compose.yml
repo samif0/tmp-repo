@@ -43,7 +43,7 @@ services:
       context: ./blackflow
       dockerfile: Dockerfile.dev
     ports:
-      - "3002:3000"
+      - "3000:3000"
     volumes:
       - ./blackflow:/app
       - /app/node_modules
