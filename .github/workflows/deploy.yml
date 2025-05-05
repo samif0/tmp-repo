@@ -99,7 +99,7 @@ jobs:
       run: |
         echo "Staging deployment completed. Accessing health endpoint to verify..."
         sleep 10
-        curl -s http://${{ secrets.STAGING_EC2_HOST }}:3001/api/health || echo "Could not reach health endpoint, but continuing anyway"
+        curl -s http://${{ secrets.STAGING_EC2_HOST }}:3000/api/health || echo "Could not reach health endpoint, but continuing anyway"
   
   wait-for-approval:
     name: Wait for Production Approval
