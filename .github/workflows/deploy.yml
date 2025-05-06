@@ -172,6 +172,13 @@ jobs:
           echo "Production deployment complete!"
         ENDSSH
 
+    - name: Install SSH key
+      uses: shimataro/ssh-key-action@v2
+      with:
+        key: ${{ secrets.SSH_PRIVATE_KEY_2 }}
+        known_hosts: ${{ secrets.SSH_KNOWN_HOSTS_2 }}
+        if_key_exists: replace
+
     - name: Deploy to production US-West-2 
       run: |
         ssh ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST2 }} 'bash -s' << 'ENDSSH'
