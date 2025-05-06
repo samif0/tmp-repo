@@ -143,10 +143,38 @@ jobs:
     - name: Copy production compose file to server
       run: |
         scp docker-compose.prod.yml ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }}:~/docker-compose.prod.yml
+        scp docker-compose.prod.yml ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST2 }}:~/docker-compose.prod.yml
     
     - name: Deploy to production
       run: |
         ssh ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }} 'bash -s' << 'ENDSSH'
+          cd ~/app
+          
+          if [ -d "blackflow" ]; then
+            cd blackflow
+            git pull
+          else
+            git clone https://github.com/samif0/blackflow.git blackflow
+            cd blackflow
+          fi
+          
+          cd ..
+          
+          mv ~/docker-compose.prod.yml ./
+          
+          # Deploy using Docker Compose
+          docker-compose -f docker-compose.yml -f docker-compose.prod.yml down blackflow-prod || true
+          docker-compose -f docker-compose.yml -f docker-compose.prod.yml up -d blackflow-prod
+          
+          rm docker-compose.prod.yml
+          docker image prune -af --force
+          
+          echo "Production deployment complete!"
+        ENDSSH
+
+    - name: Deploy to production US-West-2 
+      run: |
+        ssh ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST2 }} 'bash -s' << 'ENDSSH'
           cd ~/app
           
           if [ -d "blackflow" ]; then
@@ -176,3 +204,4 @@ jobs:
         echo "Production deployment completed. Accessing health endpoint to verify..."
         sleep 10
         curl -s http://${{ secrets.EC2_HOST }}:3000/api/health || echo "Could not reach health endpoint, but continuing anyway"
+        curl -s http://${{ secrets.EC2_HOST2 }}:3000/api/health || echo "Could not reach health endpoint, but continuing anyway"
