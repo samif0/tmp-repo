@@ -81,10 +81,15 @@ jobs:
           
           # Move the compose file from home directory
           mv ~/docker-compose.staging.yml ./
+                    
+          docker-compose -f docker-compose.yml -f docker-compose.staging.yml down blackflow-staging
           
-          # Deploy using Docker Compose
-          docker-compose -f docker-compose.yml -f docker-compose.staging.yml down blackflow-staging || true
-          docker-compose -f docker-compose.yml -f docker-compose.staging.yml up -d blackflow-staging
+          # Remove old images for this service
+          docker image rm $(docker images -q *blackflow* 2>/dev/null) 2>/dev/null || true
+          
+          # Force rebuild and start service
+          docker-compose -f docker-compose.yml -f docker-compose.staging.yml build --no-cache blackflow-staging
+          docker-compose -f docker-compose.yml -f docker-compose.staging.yml up -d --force-recreate blackflow-staging 
           
           # Clean up
           rm docker-compose.staging.yml
@@ -163,9 +168,14 @@ jobs:
           
           mv ~/docker-compose.prod.yml ./
           
-          # Deploy using Docker Compose
-          docker-compose -f docker-compose.yml -f docker-compose.prod.yml down blackflow-prod || true
-          docker-compose -f docker-compose.yml -f docker-compose.prod.yml up -d blackflow-prod
+          docker-compose -f docker-compose.yml -f docker-compose.prod.yml down blackflow-prod
+          
+          # Remove old images for this service
+          docker image rm $(docker images -q *blackflow* 2>/dev/null) 2>/dev/null || true
+          
+          # Force rebuild and start service
+          docker-compose -f docker-compose.yml -f docker-compose.prod.yml build --no-cache blackflow-prod
+          docker-compose -f docker-compose.yml -f docker-compose.prod.yml up -d --force-recreate blackflow-prod 
           
           rm docker-compose.prod.yml
           docker image prune -af --force
@@ -203,9 +213,14 @@ jobs:
           
           mv ~/docker-compose.prod.yml ./
           
-          # Deploy using Docker Compose
-          docker-compose -f docker-compose.yml -f docker-compose.prod.yml down blackflow-prod || true
-          docker-compose -f docker-compose.yml -f docker-compose.prod.yml up -d blackflow-prod
+          docker-compose -f docker-compose.yml -f docker-compose.prod.yml down blackflow-prod
+          
+          # Remove old images for this service
+          docker image rm $(docker images -q *blackflow* 2>/dev/null) 2>/dev/null || true
+          
+          # Force rebuild and start service
+          docker-compose -f docker-compose.yml -f docker-compose.prod.yml build --no-cache blackflow-prod
+          docker-compose -f docker-compose.yml -f docker-compose.prod.yml up -d --force-recreate blackflow-prod 
           
           rm docker-compose.prod.yml
           docker image prune -af --force
