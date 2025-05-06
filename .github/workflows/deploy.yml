@@ -157,6 +157,8 @@ jobs:
             cd blackflow
           fi
           
+          cp docker-compose.yml ../ || echo "No docker-compose.yml to copy"
+
           cd ..
           
           mv ~/docker-compose.prod.yml ./
@@ -195,6 +197,8 @@ jobs:
             cd blackflow
           fi
           
+          cp docker-compose.yml ../ || echo "No docker-compose.yml to copy"
+
           cd ..
           
           mv ~/docker-compose.prod.yml ./
