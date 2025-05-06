@@ -143,7 +143,6 @@ jobs:
     - name: Copy production compose file to server
       run: |
         scp docker-compose.prod.yml ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }}:~/docker-compose.prod.yml
-        scp docker-compose.prod.yml ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST2 }}:~/docker-compose.prod.yml
     
     - name: Deploy to production
       run: |
@@ -178,6 +177,10 @@ jobs:
         key: ${{ secrets.SSH_PRIVATE_KEY_2 }}
         known_hosts: ${{ secrets.SSH_KNOWN_HOSTS_2 }}
         if_key_exists: replace
+
+    - name: Copy production compose file to server
+      run: |
+        scp docker-compose.prod.yml ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST2 }}:~/docker-compose.prod.yml
 
     - name: Deploy to production US-West-2 
       run: |
