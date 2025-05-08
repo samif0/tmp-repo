@@ -66,6 +66,7 @@ jobs:
         ssh ${{ secrets.STAGING_EC2_USERNAME }}@${{ secrets.STAGING_EC2_HOST }} 'bash -s' << 'ENDSSH'
           mkdir -p ~/app
           cd ~/app
+
           
           if [ -d "blackflow" ]; then
             cd blackflow
@@ -78,11 +79,15 @@ jobs:
           cp docker-compose.yml ../ || echo "No docker-compose.yml to copy"
           
           cd ..
+
           
           # Move the compose file from home directory
           mv ~/docker-compose.staging.yml ./
                     
-          docker-compose -f docker-compose.yml -f docker-compose.staging.yml down blackflow-staging
+          docker-compose down --remove-orphans
+          docker rm -f $(docker ps -a -q --filter name=blackflow) 2>/dev/null  true
+          docker rmi -f $(docker images -q blackflow) 2>/dev/null  true
+          docker system prune -af --volumes
           
           # Remove old images for this service
           docker image rm $(docker images -q *blackflow* 2>/dev/null) 2>/dev/null || true
@@ -167,8 +172,12 @@ jobs:
           cd ..
           
           mv ~/docker-compose.prod.yml ./
-          
-          docker-compose -f docker-compose.yml -f docker-compose.prod.yml down blackflow-prod
+           
+          docker-compose down --remove-orphans
+          docker rm -f $(docker ps -a -q --filter name=blackflow) 2>/dev/null  true
+          docker rmi -f $(docker images -q blackflow) 2>/dev/null  true
+          docker system prune -af --volumes
+
           
           # Remove old images for this service
           docker image rm $(docker images -q *blackflow* 2>/dev/null) 2>/dev/null || true
@@ -213,7 +222,10 @@ jobs:
           
           mv ~/docker-compose.prod.yml ./
           
-          docker-compose -f docker-compose.yml -f docker-compose.prod.yml down blackflow-prod
+          docker-compose down --remove-orphans
+          docker rm -f $(docker ps -a -q --filter name=blackflow) 2>/dev/null  true
+          docker rmi -f $(docker images -q blackflow) 2>/dev/null  true
+          docker system prune -af --volumes
           
           # Remove old images for this service
           docker image rm $(docker images -q *blackflow* 2>/dev/null) 2>/dev/null || true
