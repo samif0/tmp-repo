@@ -39,7 +39,7 @@ jobs:
       uses: shimataro/ssh-key-action@v2
       with:
         key: ${{ secrets.SSH_PRIVATE_KEY }}
-        name: id_ed25519  # Explicitly setting key type for ED25519
+        name: id_ed25519
         known_hosts: ${{ secrets.SSH_KNOWN_HOSTS }}
         if_key_exists: replace
     
@@ -74,7 +74,6 @@ jobs:
     
     - name: Configure Nginx
       run: |
-        # Ensure the nginx directories exist
         mkdir -p nginx/conf.d
         
         # Configure nginx with the server info
@@ -83,12 +82,10 @@ jobs:
         ./scripts/nginx/create-nginx-conf.sh
         ./scripts/nginx/create-server-blocks.sh
     
-    # Ensure app directory exists and create it if needed
     - name: Ensure app directory exists
       run: |
         ssh ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }} 'mkdir -p ~/app'
     
-    # Check if this is the first deployment
     - name: Check if initial setup is needed
       id: check-setup
       run: |
