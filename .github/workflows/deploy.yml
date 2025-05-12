@@ -35,13 +35,14 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
     
-    - name: Setup SSH
+    - name: Install SSH Key
       uses: shimataro/ssh-key-action@v2
-      with: 
+      with:
         key: ${{ secrets.SSH_PRIVATE_KEY }}
+        name: id_ed25519  # Explicitly setting key type for ED25519
         known_hosts: ${{ secrets.SSH_KNOWN_HOSTS }}
-
-
+        if_key_exists: replace
+    
     - name: Create environment files
       run: |
         # Create staging environment file
@@ -78,7 +79,6 @@ jobs:
         
         # Configure nginx with the server info
         export PROD_HOST="${{ secrets.EC2_HOST }}"
-        export STAGING_HOST="staging.${{ secrets.EC2_HOST }}"
         chmod +x scripts/nginx/create-nginx-conf.sh scripts/nginx/create-server-blocks.sh
         ./scripts/nginx/create-nginx-conf.sh
         ./scripts/nginx/create-server-blocks.sh
@@ -86,43 +86,43 @@ jobs:
     # Ensure app directory exists and create it if needed
     - name: Ensure app directory exists
       run: |
-        ssh -i ~/.ssh/key.pem ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }} 'mkdir -p ~/app'
+        ssh ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }} 'mkdir -p ~/app'
     
     # Check if this is the first deployment
     - name: Check if initial setup is needed
       id: check-setup
       run: |
-        SETUP_NEEDED=$(ssh -i ~/.ssh/key.pem ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }} "if [ -f ~/app/docker-compose.merged.yml ]; then echo 'false'; else echo 'true'; fi")
+        SETUP_NEEDED=$(ssh ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }} "if [ -f ~/app/docker-compose.merged.yml ]; then echo 'false'; else echo 'true'; fi")
         echo "setup_needed=$SETUP_NEEDED" >> $GITHUB_OUTPUT
     
     - name: Setup consolidated environment
       run: |
         # Create necessary directories on server
-        ssh -i ~/.ssh/key.pem ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }} 'mkdir -p ~/app/scripts/deploy ~/app/scripts/nginx ~/app/scripts/cleanup ~/app/nginx/conf.d'
+        ssh ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }} 'mkdir -p ~/app/scripts/deploy ~/app/scripts/nginx ~/app/scripts/cleanup ~/app/nginx/conf.d'
         
         # Copy all necessary files
-        scp -i ~/.ssh/key.pem -r scripts/* ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }}:~/app/scripts/
-        scp -i ~/.ssh/key.pem -r nginx/* ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }}:~/app/nginx/
-        scp -i ~/.ssh/key.pem docker-compose.prod.yml docker-compose.staging.yml ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }}:~/app/
+        scp -r scripts/* ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }}:~/app/scripts/
+        scp -r nginx/* ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }}:~/app/nginx/
+        scp docker-compose.prod.yml docker-compose.staging.yml ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }}:~/app/
         
         # Create docker-compose.merged.yml on the server
-        ssh -i ~/.ssh/key.pem ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }} 'cd ~/app && chmod +x ./scripts/deploy/*.sh ./scripts/nginx/*.sh ./scripts/cleanup/*.sh && ./scripts/deploy/create-docker-compose.sh'
+        ssh ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }} 'cd ~/app && chmod +x ./scripts/deploy/*.sh ./scripts/nginx/*.sh ./scripts/cleanup/*.sh && ./scripts/deploy/create-docker-compose.sh'
         
         # If this is the first setup, clone the repo and do full setup
         if [ "${{ steps.check-setup.outputs.setup_needed }}" = "true" ]; then
           echo "Performing initial setup..."
-          ssh -i ~/.ssh/key.pem ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }} 'cd ~/app && ./scripts/cleanup/cleanup-docker.sh && if [ ! -d "blackflow" ]; then git clone https://github.com/samif0/blackflow.git blackflow; fi && docker-compose -f docker-compose.merged.yml -f docker-compose.prod.yml build blackflow-prod && docker-compose -f docker-compose.merged.yml -f docker-compose.staging.yml build blackflow-staging && docker-compose -f docker-compose.merged.yml -f docker-compose.prod.yml -f docker-compose.staging.yml up -d'
+          ssh ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }} 'cd ~/app && ./scripts/cleanup/cleanup-docker.sh && if [ ! -d "blackflow" ]; then git clone https://github.com/samif0/blackflow.git blackflow; fi && docker-compose -f docker-compose.merged.yml -f docker-compose.prod.yml build blackflow-prod && docker-compose -f docker-compose.merged.yml -f docker-compose.staging.yml build blackflow-staging && docker-compose -f docker-compose.merged.yml -f docker-compose.prod.yml -f docker-compose.staging.yml up -d'
         else
           echo "Updating existing deployment..."
-          ssh -i ~/.ssh/key.pem ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }} 'cd ~/app && cd blackflow && git pull && cd .. && docker-compose -f docker-compose.merged.yml -f docker-compose.prod.yml build blackflow-prod && docker-compose -f docker-compose.merged.yml -f docker-compose.staging.yml build blackflow-staging && docker-compose -f docker-compose.merged.yml -f docker-compose.prod.yml -f docker-compose.staging.yml up -d'
+          ssh ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }} 'cd ~/app && cd blackflow && git pull && cd .. && docker-compose -f docker-compose.merged.yml -f docker-compose.prod.yml build blackflow-prod && docker-compose -f docker-compose.merged.yml -f docker-compose.staging.yml build blackflow-staging && docker-compose -f docker-compose.merged.yml -f docker-compose.prod.yml -f docker-compose.staging.yml up -d'
         fi
         
         # Clean up
-        ssh -i ~/.ssh/key.pem ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }} 'cd ~/app && docker image prune -af --force'
+        ssh ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }} 'cd ~/app && docker image prune -af --force'
  
     - name: Verify deployments
       run: |
         echo "Deployments completed. Verifying health endpoints..."
         sleep 15
         curl -s http://${{ secrets.EC2_HOST }}/api/health || echo "Could not reach production health endpoint"
-        curl -s http://staging.${{ secrets.EC2_HOST }}/api/health || echo "Could not reach staging health endpoint"
+        curl -s http://${{ secrets.EC2_HOST }}:8080/api/health || echo "Could not reach staging health endpoint"
