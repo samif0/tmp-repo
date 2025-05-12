@@ -89,14 +89,6 @@ jobs:
       run: |
         ssh -i ~/.ssh/key.pem ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }} 'mkdir -p ~/app'
     
-    # Check if this is the first deployment by checking for merged config file
-    - name: Check if initial setup is needed
-      id: check-setup
-      run: |
-        SETUP_NEEDED=$(ssh -i ~/.ssh/key.pem ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }} "if [ -f ~/app/docker-compose.merged.yml ]; then echo 'false'; else echo 'true'; fi")
-        echo "setup_needed=$SETUP_NEEDED" >> $GITHUB_OUTPUT
-    
-    # Always setup the consolidated environment (first time or update)
     - name: Setup consolidated environment
       run: |
             # Create necessary directories on server
@@ -121,8 +113,7 @@ jobs:
         
         # Clean up
         ssh -i ~/.ssh/key.pem ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }} 'cd ~/app && docker image prune -af --force'
-
-    
+ 
     - name: Verify deployments
       run: |
         echo "Deployments completed. Verifying health endpoints..."
