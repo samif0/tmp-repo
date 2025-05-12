@@ -142,4 +142,4 @@ jobs:
         echo "Deployments completed. Verifying health endpoints..."
         sleep 15
         curl -k https://${{ secrets.DOMAIN_NAME }}/api/health || echo "Could not reach production health endpoint"
-        curl -k https://staging.${{secrets.DOMAIN_NAME) }}/api/health || echo "Could not reach staging health endpoint"
+        curl -k https://staging.${{ secrets.DOMAIN_NAME }}/api/health || echo "Could not reach staging health endpoint"
