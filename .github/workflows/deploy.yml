@@ -35,11 +35,11 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
     
-    - name: Install SSH key for staging
+    - name: Install SSH key
       uses: shimataro/ssh-key-action@v2
       with:
-        key: ${{ secrets.STAGING_SSH_PRIVATE_KEY }}
-        known_hosts: ${{ secrets.STAGING_SSH_KNOWN_HOSTS }}
+        key: ${{ secrets.SSH_PRIVATE_KEY }}  # Using production SSH key for all deployments
+        known_hosts: ${{ secrets.SSH_KNOWN_HOSTS }}
         if_key_exists: replace
     
     - name: Create staging compose file
@@ -57,57 +57,32 @@ jobs:
         STAGING_AUTH_SECRET: NA
         STAGING_DATABASE_URL: NA
     
-    - name: Copy staging compose file to server
+    - name: Configure Nginx for staging
       run: |
-        scp docker-compose.staging.yml ${{ secrets.STAGING_EC2_USERNAME }}@${{ secrets.STAGING_EC2_HOST }}:~/docker-compose.staging.yml
+        # Ensure the nginx directories exist
+        mkdir -p nginx/conf.d
+        
+        # Run the existing server blocks script with the correct variables
+        export PROD_HOST="${{ secrets.EC2_HOST }}"  # Main EC2 host for both environments
+        export STAGING_HOST="staging.${{ secrets.EC2_HOST }}"  # Using subdomain or path for staging
+        chmod +x scripts/nginx/create-server-blocks.sh
+        ./scripts/nginx/create-server-blocks.sh
+    
+    - name: Copy files to server
+      run: |
+        # Copy staging configuration files to server
+        scp -r scripts/ nginx/ ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }}:~/app/
+        scp docker-compose.staging.yml ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }}:~/app/
     
     - name: Deploy to staging
       run: |
-        ssh ${{ secrets.STAGING_EC2_USERNAME }}@${{ secrets.STAGING_EC2_HOST }} 'bash -s' << 'ENDSSH'
-          mkdir -p ~/app
-          cd ~/app
-
-          
-          if [ -d "blackflow" ]; then
-            cd blackflow
-            git pull
-          else
-            git clone https://github.com/samif0/blackflow.git blackflow
-            cd blackflow
-          fi
-          
-          cp docker-compose.yml ../ || echo "No docker-compose.yml to copy"
-          
-          cd ..
-
-          
-          # Move the compose file from home directory
-          mv ~/docker-compose.staging.yml ./
-                    
-          docker-compose down --remove-orphans
-          docker rm -f $(docker ps -a -q --filter name=blackflow) 2>/dev/null  true
-          docker rmi -f $(docker images -q blackflow) 2>/dev/null  true
-          docker system prune -af --volumes
-          
-          # Remove old images for this service
-          docker image rm $(docker images -q *blackflow* 2>/dev/null) 2>/dev/null || true
-          
-          # Force rebuild and start service
-          docker-compose -f docker-compose.yml -f docker-compose.staging.yml build --no-cache blackflow-staging
-          docker-compose -f docker-compose.yml -f docker-compose.staging.yml up -d --force-recreate blackflow-staging 
-          
-          # Clean up
-          rm docker-compose.staging.yml
-          docker image prune -af --force
-          
-          echo "Staging deployment complete!"
-        ENDSSH
+        ssh ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }} 'cd ~/app && chmod +x ./scripts/deploy/*.sh ./scripts/nginx/*.sh ./scripts/cleanup/*.sh && docker-compose -f docker-compose.merged.yml -f docker-compose.staging.yml build --no-cache blackflow-staging && docker-compose -f docker-compose.merged.yml -f docker-compose.staging.yml up -d --force-recreate blackflow-staging && docker-compose restart nginx && docker image prune -af --force'
     
     - name: Verify staging deployment
       run: |
         echo "Staging deployment completed. Accessing health endpoint to verify..."
         sleep 10
-        curl -s http://${{ secrets.STAGING_EC2_HOST }}:3000/api/health || echo "Could not reach health endpoint, but continuing anyway"
+        curl -s http://staging.${{ secrets.EC2_HOST }}/api/health || echo "Could not reach health endpoint, but continuing anyway"
   
   wait-for-approval:
     name: Wait for Production Approval
@@ -127,7 +102,7 @@ jobs:
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
-    
+      
     - name: Install SSH key
       uses: shimataro/ssh-key-action@v2
       with:
@@ -150,99 +125,57 @@ jobs:
         PROD_AUTH_SECRET: NA
         PROD_DATABASE_URL: NA
     
-    - name: Copy production compose file to server
+    # Check if this is the first deployment
+    - name: Check if initial setup is needed
+      id: check-setup
       run: |
-        scp docker-compose.prod.yml ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }}:~/docker-compose.prod.yml
+        SETUP_NEEDED=$(ssh ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }} '[ -f ~/app/docker-compose.merged.yml ] && echo "false" || echo "true"')
+        echo "setup_needed=$SETUP_NEEDED" >> $GITHUB_OUTPUT
     
+    # For initial setup, use the full consolidated deployment
+    - name: Setup consolidated environment
+      if: steps.check-setup.outputs.setup_needed == 'true'
+      run: |
+        # Configure Nginx with the correct hostnames
+        mkdir -p nginx/conf.d
+        export PROD_HOST="${{ secrets.EC2_HOST }}"
+        export STAGING_HOST="staging.${{ secrets.EC2_HOST }}"
+        chmod +x scripts/nginx/create-nginx-conf.sh scripts/nginx/create-server-blocks.sh
+        ./scripts/nginx/create-nginx-conf.sh
+        ./scripts/nginx/create-server-blocks.sh
+        
+        # Create necessary directories on server
+        ssh ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }} 'mkdir -p ~/app/scripts/deploy ~/app/scripts/nginx ~/app/scripts/cleanup ~/app/nginx/conf.d'
+        
+        # Copy all necessary files
+        scp -r scripts/* ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }}:~/app/scripts/
+        scp -r nginx/* ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }}:~/app/nginx/
+        scp docker-compose.prod.yml ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }}:~/app/
+        scp docker-compose.yml ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }}:~/app/
+        
+        # Run the full consolidated deployment
+        ssh ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }} 'cd ~/app && chmod +x ./scripts/deploy/*.sh ./scripts/nginx/*.sh ./scripts/cleanup/*.sh && ./scripts/deploy/create-docker-compose.sh && ./scripts/cleanup/cleanup-docker.sh && docker-compose -f docker-compose.merged.yml -f docker-compose.prod.yml up -d --build'
+    
+    # For regular deployments, just update the production service
     - name: Deploy to production
+      if: steps.check-setup.outputs.setup_needed == 'false'
       run: |
-        ssh ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }} 'bash -s' << 'ENDSSH'
-          cd ~/app
-          
-          if [ -d "blackflow" ]; then
-            cd blackflow
-            git pull
-          else
-            git clone https://github.com/samif0/blackflow.git blackflow
-            cd blackflow
-          fi
-          
-          cp docker-compose.yml ../ || echo "No docker-compose.yml to copy"
-
-          cd ..
-          
-          mv ~/docker-compose.prod.yml ./
-           
-          docker-compose down --remove-orphans
-          docker rm -f $(docker ps -a -q --filter name=blackflow) 2>/dev/null  true
-          docker rmi -f $(docker images -q blackflow) 2>/dev/null  true
-          docker system prune -af --volumes
-
-          
-          # Remove old images for this service
-          docker image rm $(docker images -q *blackflow* 2>/dev/null) 2>/dev/null || true
-          
-          # Force rebuild and start service
-          docker-compose -f docker-compose.yml -f docker-compose.prod.yml build --no-cache blackflow-prod
-          docker-compose -f docker-compose.yml -f docker-compose.prod.yml up -d --force-recreate blackflow-prod 
-          
-          rm docker-compose.prod.yml
-          docker image prune -af --force
-          
-          echo "Production deployment complete!"
-        ENDSSH
-
-    - name: Install SSH key
-      uses: shimataro/ssh-key-action@v2
-      with:
-        key: ${{ secrets.SSH_PRIVATE_KEY_2 }}
-        known_hosts: ${{ secrets.SSH_KNOWN_HOSTS_2 }}
-        if_key_exists: replace
-
-    - name: Copy production compose file to server
-      run: |
-        scp docker-compose.prod.yml ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST2 }}:~/docker-compose.prod.yml
-
-    - name: Deploy to production US-West-2 
-      run: |
-        ssh ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST2 }} 'bash -s' << 'ENDSSH'
-          cd ~/app
-          
-          if [ -d "blackflow" ]; then
-            cd blackflow
-            git pull
-          else
-            git clone https://github.com/samif0/blackflow.git blackflow
-            cd blackflow
-          fi
-          
-          cp docker-compose.yml ../ || echo "No docker-compose.yml to copy"
-
-          cd ..
-          
-          mv ~/docker-compose.prod.yml ./
-          
-          docker-compose down --remove-orphans
-          docker rm -f $(docker ps -a -q --filter name=blackflow) 2>/dev/null  true
-          docker rmi -f $(docker images -q blackflow) 2>/dev/null  true
-          docker system prune -af --volumes
-          
-          # Remove old images for this service
-          docker image rm $(docker images -q *blackflow* 2>/dev/null) 2>/dev/null || true
-          
-          # Force rebuild and start service
-          docker-compose -f docker-compose.yml -f docker-compose.prod.yml build --no-cache blackflow-prod
-          docker-compose -f docker-compose.yml -f docker-compose.prod.yml up -d --force-recreate blackflow-prod 
-          
-          rm docker-compose.prod.yml
-          docker image prune -af --force
-          
-          echo "Production deployment complete!"
-        ENDSSH
+        # Copy the production environment file and updated scripts/config
+        scp docker-compose.prod.yml ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }}:~/app/
+        scp -r scripts/* ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }}:~/app/scripts/
+        
+        # Reconfigure nginx in case of changes
+        export PROD_HOST="${{ secrets.EC2_HOST }}"
+        export STAGING_HOST="staging.${{ secrets.EC2_HOST }}"
+        chmod +x scripts/nginx/create-server-blocks.sh
+        ./scripts/nginx/create-server-blocks.sh
+        scp -r nginx/conf.d/* ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }}:~/app/nginx/conf.d/
+        
+        # Deploy just the production service
+        ssh ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }} 'cd ~/app && chmod +x ./scripts/deploy/*.sh ./scripts/nginx/*.sh ./scripts/cleanup/*.sh && docker-compose -f docker-compose.merged.yml -f docker-compose.prod.yml build --no-cache blackflow-prod && docker-compose -f docker-compose.merged.yml -f docker-compose.prod.yml up -d --force-recreate blackflow-prod && docker-compose restart nginx && docker image prune -af --force'
     
     - name: Verify production deployment
       run: |
         echo "Production deployment completed. Accessing health endpoint to verify..."
         sleep 10
-        curl -s http://${{ secrets.EC2_HOST }}:3000/api/health || echo "Could not reach health endpoint, but continuing anyway"
-        curl -s http://${{ secrets.EC2_HOST2 }}:3000/api/health || echo "Could not reach health endpoint, but continuing anyway"
+        curl -s http://${{ secrets.EC2_HOST }}/api/health || echo "Could not reach health endpoint, but continuing anyway"
