@@ -13,6 +13,7 @@ services:
     image: nginx:alpine
     ports:
       - "80:80"
+      - "8080:8080"
       - "443:443"
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
