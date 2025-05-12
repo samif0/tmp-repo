@@ -84,11 +84,12 @@ jobs:
         ./scripts/nginx/create-nginx-conf.sh
         ./scripts/nginx/create-server-blocks.sh
     
+    # Ensure app directory exists and create it if needed
     - name: Ensure app directory exists
       run: |
         ssh -i ~/.ssh/key.pem ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }} 'mkdir -p ~/app'
-
-
+    
+    # Check if this is the first deployment
     - name: Check if initial setup is needed
       id: check-setup
       run: |
@@ -97,7 +98,7 @@ jobs:
     
     - name: Setup consolidated environment
       run: |
-            # Create necessary directories on server
+        # Create necessary directories on server
         ssh -i ~/.ssh/key.pem ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }} 'mkdir -p ~/app/scripts/deploy ~/app/scripts/nginx ~/app/scripts/cleanup ~/app/nginx/conf.d'
         
         # Copy all necessary files
