@@ -36,13 +36,12 @@ jobs:
       uses: actions/checkout@v4
     
     - name: Setup SSH
-      run: |
-        mkdir -p ~/.ssh
-        echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/key.pem
-        chmod 600 ~/.ssh/key.pem
-        ssh-keyscan ${{ secrets.EC2_HOST }} > ~/.ssh/known_hosts
-        chmod 644 ~/.ssh/known_hosts
-    
+      uses: shimataro/ssh-key-action@v2
+      with: 
+        key: ${{ secrets.SSH_PRIVATE_KEY }}
+        known_hosts: ${{ secrets.SSH_KNOWN_HOSTS }}
+
+
     - name: Create environment files
       run: |
         # Create staging environment file
