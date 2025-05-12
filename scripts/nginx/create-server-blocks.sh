@@ -18,8 +18,8 @@ server {
 
 # Staging server
 server {
-    listen 80;
-    server_name $STAGING_HOST;
+    listen 8080;
+    server_name $PROD_HOST;
     
     location / {
         proxy_pass http://blackflow-staging:3000;
