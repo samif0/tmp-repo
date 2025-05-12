@@ -77,7 +77,7 @@ jobs:
         mkdir -p nginx/conf.d
         
         export DOMAIN_NAME="${{ secrets.DOMAIN_NAME }}"
-        export STAGING_SUBDOMAIN="${{ format('staging.{0}', secrets.DOMAIN_NAME) }}"
+        export STAGING_DOMAIN_NAME="staging.${{ secrets.DOMAIN_NAME }}"
         
         chmod +x scripts/nginx/create-nginx-conf.sh scripts/nginx/create-server-blocks.sh
         ./scripts/nginx/create-nginx-conf.sh
@@ -85,7 +85,7 @@ jobs:
         cat > scripts/nginx/domain-variables.sh << EOF
         #!/bin/bash
         export DOMAIN_NAME="$DOMAIN_NAME"
-        export STAGING_SUBDOMAIN="$STAGING_SUBDOMAIN"
+        export STAGING_DOMAIN_NAME="$STAGING_DOMAIN_NAME"
         EOF
         chmod +x scripts/nginx/domain-variables.sh
         
@@ -142,4 +142,4 @@ jobs:
         echo "Deployments completed. Verifying health endpoints..."
         sleep 15
         curl -k https://${{ secrets.DOMAIN_NAME }}/api/health || echo "Could not reach production health endpoint"
-        curl -k https://${{ secrets.STAGING_SUBDOMAIN || format("staging.{0}", secrets.DOMAIN_NAME) }}/api/health || echo "Could not reach staging health endpoint"
+        curl -k https://staging.${{secrets.DOMAIN_NAME) }}/api/health || echo "Could not reach staging health endpoint"
