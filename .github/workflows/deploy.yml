@@ -25,25 +25,27 @@ jobs:
       - name: Run tests
         run: npm test || echo "No tests available yet"
   
-  deploy-staging:
-    name: Deploy to Staging
+  deploy-consolidated:
+    name: Deploy to Consolidated Environment
     needs: test
     runs-on: ubuntu-latest
-    environment: staging
+    environment: production
     
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
     
-    - name: Install SSH key
-      uses: shimataro/ssh-key-action@v2
-      with:
-        key: ${{ secrets.SSH_PRIVATE_KEY }}  # Using production SSH key for all deployments
-        known_hosts: ${{ secrets.SSH_KNOWN_HOSTS }}
-        if_key_exists: replace
-    
-    - name: Create staging compose file
+    - name: Setup SSH
       run: |
+        mkdir -p ~/.ssh
+        echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/key.pem
+        chmod 600 ~/.ssh/key.pem
+        ssh-keyscan ${{ secrets.EC2_HOST }} > ~/.ssh/known_hosts
+        chmod 644 ~/.ssh/known_hosts
+    
+    - name: Create environment files
+      run: |
+        # Create staging environment file
         echo "version: '3'" > docker-compose.staging.yml
         echo "services:" >> docker-compose.staging.yml
         echo "  blackflow-staging:" >> docker-compose.staging.yml
@@ -52,66 +54,8 @@ jobs:
         echo "      - API_URL=${STAGING_API_URL}" >> docker-compose.staging.yml
         echo "      - AUTH_SECRET=${STAGING_AUTH_SECRET}" >> docker-compose.staging.yml
         echo "      - DATABASE_URL=${STAGING_DATABASE_URL}" >> docker-compose.staging.yml
-      env:
-        STAGING_API_URL: NA
-        STAGING_AUTH_SECRET: NA
-        STAGING_DATABASE_URL: NA
-    
-    - name: Configure Nginx for staging
-      run: |
-        # Ensure the nginx directories exist
-        mkdir -p nginx/conf.d
         
-        # Run the existing server blocks script with the correct variables
-        export PROD_HOST="${{ secrets.EC2_HOST }}"  # Main EC2 host for both environments
-        export STAGING_HOST="staging.${{ secrets.EC2_HOST }}"  # Using subdomain or path for staging
-        chmod +x scripts/nginx/create-server-blocks.sh
-        ./scripts/nginx/create-server-blocks.sh
-    
-    - name: Copy files to server
-      run: |
-        # Copy staging configuration files to server
-        scp -r scripts/ nginx/ ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }}:~/app/
-        scp docker-compose.staging.yml ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }}:~/app/
-    
-    - name: Deploy to staging
-      run: |
-        ssh ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }} 'cd ~/app && chmod +x ./scripts/deploy/*.sh ./scripts/nginx/*.sh ./scripts/cleanup/*.sh && docker-compose -f docker-compose.merged.yml -f docker-compose.staging.yml build --no-cache blackflow-staging && docker-compose -f docker-compose.merged.yml -f docker-compose.staging.yml up -d --force-recreate blackflow-staging && docker-compose restart nginx && docker image prune -af --force'
-    
-    - name: Verify staging deployment
-      run: |
-        echo "Staging deployment completed. Accessing health endpoint to verify..."
-        sleep 10
-        curl -s http://staging.${{ secrets.EC2_HOST }}/api/health || echo "Could not reach health endpoint, but continuing anyway"
-  
-  wait-for-approval:
-    name: Wait for Production Approval
-    needs: deploy-staging
-    runs-on: ubuntu-latest
-    environment: production
-    steps:
-    - name: Approval notification
-      run: echo "Waiting for production deployment approval. This step will complete when the deployment is approved via GitHub Environments."
-  
-  deploy-production:
-    name: Deploy to Production
-    needs: wait-for-approval
-    runs-on: ubuntu-latest
-    environment: production
-    
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-      
-    - name: Install SSH key
-      uses: shimataro/ssh-key-action@v2
-      with:
-        key: ${{ secrets.SSH_PRIVATE_KEY }}
-        known_hosts: ${{ secrets.SSH_KNOWN_HOSTS }}
-        if_key_exists: replace
-    
-    - name: Create production compose file
-      run: |
+        # Create production environment file
         echo "version: '3'" > docker-compose.prod.yml
         echo "services:" >> docker-compose.prod.yml
         echo "  blackflow-prod:" >> docker-compose.prod.yml
@@ -121,61 +65,66 @@ jobs:
         echo "      - AUTH_SECRET=${PROD_AUTH_SECRET}" >> docker-compose.prod.yml
         echo "      - DATABASE_URL=${PROD_DATABASE_URL}" >> docker-compose.prod.yml
       env:
+        STAGING_API_URL: NA
+        STAGING_AUTH_SECRET: NA
+        STAGING_DATABASE_URL: NA
         PROD_API_URL: NA
         PROD_AUTH_SECRET: NA
         PROD_DATABASE_URL: NA
     
-    # Check if this is the first deployment
-    - name: Check if initial setup is needed
-      id: check-setup
+    - name: Configure Nginx
       run: |
-        SETUP_NEEDED=$(ssh ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }} '[ -f ~/app/docker-compose.merged.yml ] && echo "false" || echo "true"')
-        echo "setup_needed=$SETUP_NEEDED" >> $GITHUB_OUTPUT
-    
-    # For initial setup, use the full consolidated deployment
-    - name: Setup consolidated environment
-      if: steps.check-setup.outputs.setup_needed == 'true'
-      run: |
-        # Configure Nginx with the correct hostnames
+        # Ensure the nginx directories exist
         mkdir -p nginx/conf.d
+        
+        # Configure nginx with the server info
         export PROD_HOST="${{ secrets.EC2_HOST }}"
         export STAGING_HOST="staging.${{ secrets.EC2_HOST }}"
         chmod +x scripts/nginx/create-nginx-conf.sh scripts/nginx/create-server-blocks.sh
         ./scripts/nginx/create-nginx-conf.sh
         ./scripts/nginx/create-server-blocks.sh
-        
+    
+    # Ensure app directory exists and create it if needed
+    - name: Ensure app directory exists
+      run: |
+        ssh -i ~/.ssh/key.pem ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }} 'mkdir -p ~/app'
+    
+    # Check if this is the first deployment by checking for merged config file
+    - name: Check if initial setup is needed
+      id: check-setup
+      run: |
+        SETUP_NEEDED=$(ssh -i ~/.ssh/key.pem ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }} "if [ -f ~/app/docker-compose.merged.yml ]; then echo 'false'; else echo 'true'; fi")
+        echo "setup_needed=$SETUP_NEEDED" >> $GITHUB_OUTPUT
+    
+    # Always setup the consolidated environment (first time or update)
+    - name: Setup consolidated environment
+      run: |
         # Create necessary directories on server
-        ssh ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }} 'mkdir -p ~/app/scripts/deploy ~/app/scripts/nginx ~/app/scripts/cleanup ~/app/nginx/conf.d'
+        ssh -i ~/.ssh/key.pem ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }} 'mkdir -p ~/app/scripts/deploy ~/app/scripts/nginx ~/app/scripts/cleanup ~/app/nginx/conf.d'
         
         # Copy all necessary files
-        scp -r scripts/* ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }}:~/app/scripts/
-        scp -r nginx/* ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }}:~/app/nginx/
-        scp docker-compose.prod.yml ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }}:~/app/
-        scp docker-compose.yml ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }}:~/app/
+        scp -i ~/.ssh/key.pem -r scripts/* ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }}:~/app/scripts/
+        scp -i ~/.ssh/key.pem -r nginx/* ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }}:~/app/nginx/
+        scp -i ~/.ssh/key.pem docker-compose.prod.yml docker-compose.staging.yml ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }}:~/app/
         
-        # Run the full consolidated deployment
-        ssh ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }} 'cd ~/app && chmod +x ./scripts/deploy/*.sh ./scripts/nginx/*.sh ./scripts/cleanup/*.sh && ./scripts/deploy/create-docker-compose.sh && ./scripts/cleanup/cleanup-docker.sh && docker-compose -f docker-compose.merged.yml -f docker-compose.prod.yml up -d --build'
+        # Create docker-compose.merged.yml on the server
+        ssh -i ~/.ssh/key.pem ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }} 'cd ~/app && chmod +x ./scripts/deploy/*.sh ./scripts/nginx/*.sh ./scripts/cleanup/*.sh && ./scripts/deploy/create-docker-compose.sh'
+        
+        # If this is the first setup, clone the repo and do full setup
+        if [ "${{ steps.check-setup.outputs.setup_needed }}" = "true" ]; then
+          echo "Performing initial setup..."
+          ssh -i ~/.ssh/key.pem ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }} 'cd ~/app && ./scripts/cleanup/cleanup-docker.sh && if [ ! -d "blackflow" ]; then git clone https://github.com/samif0/blackflow.git blackflow; fi && docker-compose -f docker-compose.merged.yml -f docker-compose.prod.yml -f docker-compose.staging.yml up -d --build'
+        else
+          echo "Updating existing deployment..."
+          ssh -i ~/.ssh/key.pem ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }} 'cd ~/app && cd blackflow && git pull && cd .. && docker-compose -f docker-compose.merged.yml -f docker-compose.prod.yml -f docker-compose.staging.yml up -d --build'
+        fi
+        
+        # Clean up
+        ssh -i ~/.ssh/key.pem ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }} 'cd ~/app && docker image prune -af --force'
     
-    # For regular deployments, just update the production service
-    - name: Deploy to production
-      if: steps.check-setup.outputs.setup_needed == 'false'
+    - name: Verify deployments
       run: |
-        # Copy the production environment file and updated scripts/config
-        scp docker-compose.prod.yml ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }}:~/app/
-        scp -r scripts/* ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }}:~/app/scripts/
-        
-        # Reconfigure nginx in case of changes
-        export PROD_HOST="${{ secrets.EC2_HOST }}"
-        export STAGING_HOST="staging.${{ secrets.EC2_HOST }}"
-        chmod +x scripts/nginx/create-server-blocks.sh
-        ./scripts/nginx/create-server-blocks.sh
-        scp -r nginx/conf.d/* ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }}:~/app/nginx/conf.d/
-        
-        # Deploy just the production service
-        ssh ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }} 'cd ~/app && chmod +x ./scripts/deploy/*.sh ./scripts/nginx/*.sh ./scripts/cleanup/*.sh && docker-compose -f docker-compose.merged.yml -f docker-compose.prod.yml build --no-cache blackflow-prod && docker-compose -f docker-compose.merged.yml -f docker-compose.prod.yml up -d --force-recreate blackflow-prod && docker-compose restart nginx && docker image prune -af --force'
-    
-    - name: Verify production deployment
-      run: |
-        echo "Production deployment completed. Accessing health endpoint to verify..."
-        sleep 10
-        curl -s http://${{ secrets.EC2_HOST }}/api/health || echo "Could not reach health endpoint, but continuing anyway"
+        echo "Deployments completed. Verifying health endpoints..."
+        sleep 15
+        curl -s http://${{ secrets.EC2_HOST }}/api/health || echo "Could not reach production health endpoint"
+        curl -s http://staging.${{ secrets.EC2_HOST }}/api/health || echo "Could not reach staging health endpoint"
