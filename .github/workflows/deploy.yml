@@ -99,7 +99,7 @@ jobs:
     # Always setup the consolidated environment (first time or update)
     - name: Setup consolidated environment
       run: |
-        # Create necessary directories on server
+            # Create necessary directories on server
         ssh -i ~/.ssh/key.pem ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }} 'mkdir -p ~/app/scripts/deploy ~/app/scripts/nginx ~/app/scripts/cleanup ~/app/nginx/conf.d'
         
         # Copy all necessary files
@@ -113,14 +113,15 @@ jobs:
         # If this is the first setup, clone the repo and do full setup
         if [ "${{ steps.check-setup.outputs.setup_needed }}" = "true" ]; then
           echo "Performing initial setup..."
-          ssh -i ~/.ssh/key.pem ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }} 'cd ~/app && ./scripts/cleanup/cleanup-docker.sh && if [ ! -d "blackflow" ]; then git clone https://github.com/samif0/blackflow.git blackflow; fi && docker-compose -f docker-compose.merged.yml -f docker-compose.prod.yml -f docker-compose.staging.yml up -d --build'
+          ssh -i ~/.ssh/key.pem ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }} 'cd ~/app && ./scripts/cleanup/cleanup-docker.sh && if [ ! -d "blackflow" ]; then git clone https://github.com/samif0/blackflow.git blackflow; fi && docker-compose -f docker-compose.merged.yml -f docker-compose.prod.yml build blackflow-prod && docker-compose -f docker-compose.merged.yml -f docker-compose.staging.yml build blackflow-staging && docker-compose -f docker-compose.merged.yml -f docker-compose.prod.yml -f docker-compose.staging.yml up -d'
         else
           echo "Updating existing deployment..."
-          ssh -i ~/.ssh/key.pem ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }} 'cd ~/app && cd blackflow && git pull && cd .. && docker-compose -f docker-compose.merged.yml -f docker-compose.prod.yml -f docker-compose.staging.yml up -d --build'
+          ssh -i ~/.ssh/key.pem ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }} 'cd ~/app && cd blackflow && git pull && cd .. && docker-compose -f docker-compose.merged.yml -f docker-compose.prod.yml build blackflow-prod && docker-compose -f docker-compose.merged.yml -f docker-compose.staging.yml build blackflow-staging && docker-compose -f docker-compose.merged.yml -f docker-compose.prod.yml -f docker-compose.staging.yml up -d'
         fi
         
         # Clean up
         ssh -i ~/.ssh/key.pem ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }} 'cd ~/app && docker image prune -af --force'
+
     
     - name: Verify deployments
       run: |
