@@ -84,10 +84,16 @@ jobs:
         ./scripts/nginx/create-nginx-conf.sh
         ./scripts/nginx/create-server-blocks.sh
     
-    # Ensure app directory exists and create it if needed
     - name: Ensure app directory exists
       run: |
         ssh -i ~/.ssh/key.pem ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }} 'mkdir -p ~/app'
+
+
+    - name: Check if initial setup is needed
+      id: check-setup
+      run: |
+        SETUP_NEEDED=$(ssh -i ~/.ssh/key.pem ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }} "if [ -f ~/app/docker-compose.merged.yml ]; then echo 'false'; else echo 'true'; fi")
+        echo "setup_needed=$SETUP_NEEDED" >> $GITHUB_OUTPUT
     
     - name: Setup consolidated environment
       run: |
