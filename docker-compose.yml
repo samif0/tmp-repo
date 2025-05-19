@@ -91,6 +91,24 @@ services:
     networks:
       - backend
       - frontend  # Only needed if service communicates directly with frontend
+      
+  example-service-go:
+    build:
+      context: ./services/example-service-go
+      dockerfile: Dockerfile
+    ports:
+      - "3011:3000"
+    environment:
+      - GIN_MODE=release
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - backend
+      - frontend
 
   # TODO: Database service example (uncomment and configure as needed)
   # db:
