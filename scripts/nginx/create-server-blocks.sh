@@ -30,6 +30,7 @@ server {
     ssl_session_timeout 10m;
     add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
     
+    # Main application
     location / {
         proxy_pass http://blackflow-prod:3000;
         proxy_http_version 1.1;
@@ -38,6 +39,35 @@ server {
         proxy_set_header Host \$host;
         proxy_cache_bypass \$http_upgrade;
     }
+
+    # TODO: Add additional service routes as needed
+    
+    # Example service API routing
+    location /api/example/ {
+        # Rewrite the path to remove the /api/example prefix
+        rewrite ^/api/example/(.*)$ /api/v1/\$1 break;
+        
+        proxy_pass http://example-service:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host \$host;
+        proxy_cache_bypass \$http_upgrade;
+        
+        # TODO: Add service-specific headers if needed
+        # proxy_set_header X-Real-IP \$remote_addr;
+    }
+    
+    # TODO: Add more API routes for additional services
+    # location /api/another-service/ {
+    #     rewrite ^/api/another-service/(.*)$ /\$1 break;
+    #     proxy_pass http://another-service:3000;
+    #     proxy_http_version 1.1;
+    #     proxy_set_header Upgrade \$http_upgrade;
+    #     proxy_set_header Connection 'upgrade';
+    #     proxy_set_header Host \$host;
+    #     proxy_cache_bypass \$http_upgrade;
+    # }
 }
 
 # Staging server
@@ -65,6 +95,7 @@ server {
     ssl_session_timeout 10m;
     add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
     
+    # Main application
     location / {
         proxy_pass http://blackflow-staging:3000;
         proxy_http_version 1.1;
@@ -73,6 +104,8 @@ server {
         proxy_set_header Host \$host;
         proxy_cache_bypass \$http_upgrade;
     }
+    
+    # TODO: Add staging service routes here (similar to production)
 }
 
 # Default server

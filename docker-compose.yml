@@ -1,5 +1,12 @@
-
 version: '3'
+
+# TODO: Configure networks for service communication
+networks:
+  frontend:
+    driver: bridge
+  backend:
+    driver: bridge
+    internal: true  # Makes this a private network
 
 services: 
   blackflow-prod:
@@ -19,6 +26,9 @@ services:
       timeout: 10s
       retries: 3
       start_period: 20s
+    networks:
+      - frontend
+      # TODO: Add backend network if the frontend needs to communicate with backend services directly
 
   blackflow-staging:
     build:
@@ -37,6 +47,8 @@ services:
       timeout: 10s
       retries: 3
       start_period: 20s
+    networks:
+      - frontend
 
   blackflow-dev:
     build:
@@ -50,3 +62,61 @@ services:
     environment: 
       - NODE_ENV=development
     command: npm run dev
+    networks:
+      - frontend
+
+  # TODO: Add more service definitions as needed
+  example-service:
+    build:
+      context: ./services/example-service
+      dockerfile: Dockerfile
+    # TODO: Configure appropriate port mapping
+    ports:
+      - "3010:3000"
+    environment:
+      - NODE_ENV=production
+      # TODO: Add service-specific environment variables
+      # - DATABASE_URL=postgres://user:password@db:5432/dbname
+      # - REDIS_URL=redis://redis:6379
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    # TODO: Configure service dependencies if needed
+    # depends_on:
+    #   - db
+    #   - redis
+    networks:
+      - backend
+      - frontend  # Only needed if service communicates directly with frontend
+
+  # TODO: Database service example (uncomment and configure as needed)
+  # db:
+  #   image: postgres:14-alpine
+  #   volumes:
+  #     - postgres_data:/var/lib/postgresql/data
+  #   environment:
+  #     - POSTGRES_USER=postgres
+  #     - POSTGRES_PASSWORD=postgres
+  #     - POSTGRES_DB=example
+  #   ports:
+  #     - "5432:5432"
+  #   networks:
+  #     - backend
+  #   restart: unless-stopped
+
+  # TODO: Cache service example (uncomment and configure as needed)
+  # redis:
+  #   image: redis:alpine
+  #   volumes:
+  #     - redis_data:/data
+  #   networks:
+  #     - backend
+  #   restart: unless-stopped
+
+# TODO: Configure volumes for persistent data (uncomment as needed)
+# volumes:
+#   postgres_data:
+#   redis_data:
