@@ -34,11 +34,15 @@ mv ~/nginx ./
 # Build and start all services
 docker-compose -f docker-compose.merged.yml -f docker-compose.prod.yml up -d --build
 
-# TODO: Add post-deployment verification steps
-# For example, check if services are healthy
-# echo "Checking service health..."
-# sleep 10
-# curl -s http://localhost:3010/health | grep "healthy" || echo "Example service is not healthy!"
+# Post-deployment verification steps
+echo "Checking service health..."
+sleep 15  # Give services time to start up
+
+# Check main app health
+curl -s http://localhost:3000/api/health | grep "healthy" || echo "Main app is not healthy!"
+
+# Check auth service health
+curl -s http://localhost:3003/health | grep "healthy" || echo "Auth service is not healthy!"
 
 # Clean up unused images
 docker image prune -af --force

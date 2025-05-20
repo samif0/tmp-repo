@@ -52,6 +52,24 @@ services:
     networks:
       - staging
     restart: unless-stopped
+    
+  auth:
+    build:
+      context: ./services/auth
+      dockerfile: Dockerfile
+    ports:
+      - "3003:3000"
+    environment:
+      - GIN_MODE=release
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - backend
+      - production  # Connect to the production network for prod env
 EOF
 
 echo "Docker Compose configuration created"
