@@ -102,7 +102,17 @@ jobs:
         SSL_EXISTS=$(ssh ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }} "if [ -f ~/app/nginx/ssl/cert.pem ] && [ -f ~/app/nginx/ssl/key.pem ]; then echo 'true'; else echo 'false'; fi")
         echo "setup_needed=$SETUP_NEEDED" >> $GITHUB_OUTPUT
         echo "ssl_exists=$SSL_EXISTS" >> $GITHUB_OUTPUT
+
+    - name: Setup SSL certificates if needed
+      if: steps.check-setup.outputs.ssl_exists == 'false'
+      run: |
+        echo "SSL certificates not found. Setting up Let's Encrypt..."
+        chmod +x scripts/ssl/certbot-setup.sh
         
+        scp scripts/ssl/certbot-setup.sh ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }}:~/
+        
+        ssh ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }} './certbot-setup.sh ${{ secrets.DOMAIN_NAME }} staging.${{ secrets.DOMAIN_NAME }} ${{ secrets.CERTBOT_EMAIL }}'
+  
     - name: Setup consolidated environment
       run: |
         # Create necessary directories on server
