@@ -111,7 +111,7 @@ jobs:
         
         scp scripts/ssl/certbot-setup.sh ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }}:~/
         
-        ssh ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }} './certbot-setup.sh ${{ secrets.DOMAIN_NAME }} staging.${{ secrets.DOMAIN_NAME }} ${{ secrets.CERTBOT_EMAIL }}'
+        ssh ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }} './certbot-setup.sh ${{ secrets.DOMAIN_NAME }} ${{ secrets.STAGING_DOMAIN_NAME }} ${{ secrets.CERTBOT_EMAIL }}'
   
     - name: Setup consolidated environment
       run: |
