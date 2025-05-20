@@ -21,6 +21,7 @@ services:
       - ./nginx/ssl:/etc/nginx/ssl:ro
     networks:
       - frontend
+      - backend
       - production
       - staging
     restart: unless-stopped
@@ -69,7 +70,7 @@ services:
       retries: 3
     networks:
       - backend
-      - production  # Connect to the production network for prod env
+      - production
 EOF
 
 echo "Docker Compose configuration created"
