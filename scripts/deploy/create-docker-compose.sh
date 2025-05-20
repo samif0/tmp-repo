@@ -5,6 +5,8 @@ version: '3'
 
 networks:
   frontend:
+  backend:
+    internal: true  # Makes this a private network
   production:
   staging:
 
@@ -58,8 +60,8 @@ services:
     build:
       context: ./services/auth
       dockerfile: Dockerfile
-    ports:
-      - "3003:3000"
+    expose:
+      - "3000"
     environment:
       - GIN_MODE=release
     restart: unless-stopped

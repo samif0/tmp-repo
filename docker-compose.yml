@@ -8,6 +8,18 @@ networks:
     internal: true  # Makes this a private network
 
 services: 
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+      - "8080:8080"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+    networks:
+      - frontend
+      - backend
+    restart: unless-stopped
   blackflow-prod:
     build:
       context: .
@@ -67,8 +79,8 @@ services:
     build:
       context: ./services/auth
       dockerfile: Dockerfile
-    ports:
-      - "3003:3000"
+    expose:
+      - "3000"
     environment:
       - GIN_MODE=release
     restart: unless-stopped
@@ -79,7 +91,6 @@ services:
       retries: 3
     networks:
       - backend
-      - frontend
           
 
   # TODO: Database service example
