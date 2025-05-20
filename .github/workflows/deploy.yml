@@ -99,19 +99,39 @@ jobs:
       id: check-setup
       run: |
         SETUP_NEEDED=$(ssh ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }} "if [ -f ~/app/docker-compose.merged.yml ]; then echo 'false'; else echo 'true'; fi")
-        SSL_EXISTS=$(ssh ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }} "if [ -f ~/app/nginx/ssl/cert.pem ] && [ -f ~/app/nginx/ssl/key.pem ]; then echo 'true'; else echo 'false'; fi")
         echo "setup_needed=$SETUP_NEEDED" >> $GITHUB_OUTPUT
-        echo "ssl_exists=$SSL_EXISTS" >> $GITHUB_OUTPUT
+        
+        # Check if SSL certs exist and aren't expiring soon
+        SSH_OUTPUT=$(ssh ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }} "if [ -f ~/app/scripts/ssl/check-ssl-certs.sh ]; then chmod +x ~/app/scripts/ssl/check-ssl-certs.sh && ~/app/scripts/ssl/check-ssl-certs.sh; else if [ -f ~/app/nginx/ssl/cert.pem ] && [ -f ~/app/nginx/ssl/key.pem ]; then echo 'Certificates exist but expiration unknown'; else echo 'SSL certificates not found'; fi; fi")
+        CERT_CODE=$?
+        
+        # Determine if SSL setup is needed based on both existence and expiration
+        if [ $CERT_CODE -eq 0 ]; then
+          SSL_SETUP_NEEDED="false"
+          echo "SSL certificates exist and are valid for more than 7 days"
+        else
+          SSL_SETUP_NEEDED="true"
+          echo "SSL certificates don't exist or will expire soon: $SSH_OUTPUT"
+        fi
+        echo "ssl_setup_needed=$SSL_SETUP_NEEDED" >> $GITHUB_OUTPUT
 
-    - name: Setup SSL certificates if needed
-      if: steps.check-setup.outputs.ssl_exists == 'false'
+    - name: Setup or renew SSL certificates if needed
+      if: steps.check-setup.outputs.ssl_setup_needed == 'true'
       run: |
-        echo "SSL certificates not found. Setting up Let's Encrypt..."
-        chmod +x scripts/ssl/certbot-setup.sh
+        echo "SSL certificates setup or renewal needed..."
+        chmod +x scripts/ssl/certbot-setup.sh scripts/ssl/check-ssl-certs.sh scripts/ssl/renew-ssl-certs.sh scripts/ssl/manage-ssl-certs.sh
         
-        scp scripts/ssl/certbot-setup.sh ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }}:~/
+        # Copy all SSL management scripts to the server
+        scp scripts/ssl/*.sh ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }}:~/
         
-        ssh ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }} './certbot-setup.sh ${{ secrets.DOMAIN_NAME }} ${{ secrets.STAGING_DOMAIN_NAME }} ${{ secrets.CERTBOT_EMAIL }}'
+        # Make sure app/scripts/ssl directory exists
+        ssh ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }} 'mkdir -p ~/app/scripts/ssl'
+        
+        # Run the SSL management script
+        ssh ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }} './manage-ssl-certs.sh ${{ secrets.DOMAIN_NAME }} ${{ secrets.STAGING_DOMAIN_NAME }} ${{ secrets.CERTBOT_EMAIL }}'
+        
+        # Copy the SSL management scripts to the app directory for future use
+        ssh ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }} 'cp ~/manage-ssl-certs.sh ~/check-ssl-certs.sh ~/renew-ssl-certs.sh ~/app/scripts/ssl/'
   
     - name: Setup consolidated environment
       run: |
@@ -130,12 +150,6 @@ jobs:
         if [ "${{ steps.check-setup.outputs.setup_needed }}" = "true" ]; then
           echo "Performing initial setup..."
           
-          if [ "${{ steps.check-setup.outputs.ssl_exists }}" = "false" ]; then
-            echo "NO SSL certificates found!"
-          else
-            echo "SSL certificates exist..."
-          fi
-          
           # Clone repo and setup application
           ssh ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }} 'cd ~/app && ./scripts/cleanup/cleanup-docker.sh && if [ ! -d "blackflow" ]; then git clone https://github.com/samif0/blackflow.git blackflow; fi && docker-compose -f docker-compose.merged.yml -f docker-compose.prod.yml build blackflow-prod && docker-compose -f docker-compose.merged.yml -f docker-compose.staging.yml build blackflow-staging && docker-compose -f docker-compose.merged.yml -f docker-compose.prod.yml -f docker-compose.staging.yml up -d'
         else
@@ -147,6 +161,12 @@ jobs:
         # Clean up
         ssh ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }} 'cd ~/app && docker image prune -af --force'
  
+    - name: Set up automated SSL certificate checks
+      run: |
+        # Create a cron job to check and renew certificates daily
+        ssh ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }} '(crontab -l 2>/dev/null || true; echo "0 3 * * * ~/app/scripts/ssl/manage-ssl-certs.sh") | crontab -'
+        echo "Set up daily SSL certificate check at 3 AM"
+    
     - name: Verify deployments
       run: |
         echo "Deployments completed. Verifying health endpoints..."
