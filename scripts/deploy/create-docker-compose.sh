@@ -27,12 +27,12 @@ services:
   
   blackflow-prod:
     build:
-      context: ./blackflow
+      context: .
       dockerfile: Dockerfile
       args:
         - NODE_ENV=production
     ports:
-      - "3001:3000"
+      - "3000:3000"
     environment: 
       - NODE_ENV=production
     networks:
@@ -41,12 +41,12 @@ services:
   
   blackflow-staging:
     build:
-      context: ./blackflow
+      context: .
       dockerfile: Dockerfile
       args:
         - NODE_ENV=staging
     ports:
-      - "3002:3000"
+      - "3001:3000"
     environment: 
       - NODE_ENV=staging
     networks:

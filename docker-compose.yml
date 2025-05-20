@@ -1,6 +1,5 @@
 version: '3'
 
-# TODO: Configure networks for service communication
 networks:
   frontend:
     driver: bridge
@@ -11,7 +10,7 @@ networks:
 services: 
   blackflow-prod:
     build:
-      context: ./blackflow
+      context: .
       dockerfile: Dockerfile
       args:
         - NODE_ENV=production
@@ -28,11 +27,10 @@ services:
       start_period: 20s
     networks:
       - frontend
-      # TODO: Add backend network if the frontend needs to communicate with backend services directly
 
   blackflow-staging:
     build:
-      context: ./blackflow
+      context: .
       dockerfile: Dockerfile
       args:
         - NODE_ENV=staging
@@ -52,10 +50,10 @@ services:
 
   blackflow-dev:
     build:
-      context: ./blackflow
+      context: .
       dockerfile: Dockerfile.dev
     ports:
-      - "3000:3000"
+      - "3001:3000"
     volumes:
       - ./blackflow:/app
       - /app/node_modules
@@ -64,40 +62,13 @@ services:
     command: npm run dev
     networks:
       - frontend
-
-  # TODO: Add more service definitions as needed
-  example-service:
-    build:
-      context: ./services/example-service
-      dockerfile: Dockerfile
-    # TODO: Configure appropriate port mapping
-    ports:
-      - "3010:3000"
-    environment:
-      - NODE_ENV=production
-      # TODO: Add service-specific environment variables
-      # - DATABASE_URL=postgres://user:password@db:5432/dbname
-      # - REDIS_URL=redis://redis:6379
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-    # TODO: Configure service dependencies if needed
-    # depends_on:
-    #   - db
-    #   - redis
-    networks:
-      - backend
-      - frontend  # Only needed if service communicates directly with frontend
       
-  example-service-go:
+  auth:
     build:
-      context: ./services/example-service-go
+      context: ./services/auth
       dockerfile: Dockerfile
     ports:
-      - "3011:3000"
+      - "3003:3000"
     environment:
       - GIN_MODE=release
     restart: unless-stopped
@@ -109,23 +80,24 @@ services:
     networks:
       - backend
       - frontend
+          
 
-  # TODO: Database service example (uncomment and configure as needed)
+  # TODO: Database service example
   # db:
   #   image: postgres:14-alpine
   #   volumes:
   #     - postgres_data:/var/lib/postgresql/data
   #   environment:
-  #     - POSTGRES_USER=postgres
-  #     - POSTGRES_PASSWORD=postgres
-  #     - POSTGRES_DB=example
+  #     - POSTGRES_USER=SECRET
+  #     - POSTGRES_PASSWORD=SECRET
+  #     - POSTGRES_DB=SECRET
   #   ports:
   #     - "5432:5432"
   #   networks:
   #     - backend
   #   restart: unless-stopped
 
-  # TODO: Cache service example (uncomment and configure as needed)
+  # TODO: Cache service example
   # redis:
   #   image: redis:alpine
   #   volumes:
@@ -134,7 +106,7 @@ services:
   #     - backend
   #   restart: unless-stopped
 
-# TODO: Configure volumes for persistent data (uncomment as needed)
+# TODO: Configure volumes for persistent data
 # volumes:
 #   postgres_data:
 #   redis_data:

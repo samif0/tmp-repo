@@ -16,7 +16,7 @@ Services are deployed in a private subnet (Docker network) and communicate with 
 To add a new service to the architecture:
 
 1. Create a new directory for your service in the `services/` directory
-2. Implement your service using your preferred framework (Express.js, FastAPI, etc.)
+2. Implement your service using your preferred framework and/or language(Express.js, FastAPI, etc.)
 3. Create a Dockerfile for your service
 4. Update the main `docker-compose.yml` file to include your service
 5. Update the Nginx configuration in `scripts/nginx/create-server-blocks.sh` to route to your service
@@ -32,9 +32,9 @@ services/
     Dockerfile
     package.json (or equivalent)
     src/
-      index.js (main entry point)
+      main.## (main entry point)
       api/
-        resource.js (resource endpoints)
+        resource.## (resource endpoints)
 ```
 
 ## Service Communication

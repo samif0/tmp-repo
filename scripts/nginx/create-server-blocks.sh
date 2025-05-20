@@ -57,6 +57,15 @@ server {
         # TODO: Add service-specific headers if needed
         # proxy_set_header X-Real-IP \$remote_addr;
     }
+
+    location /api/auth/ { 
+        proxy_pass http://auth:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host \$host;
+        proxy_cache_bypass \$http_upgrade;    
+    }
     
     # TODO: Add more API routes for additional services
     # location /api/another-service/ {
@@ -118,3 +127,4 @@ server {
     }
 }
 EOF
+
