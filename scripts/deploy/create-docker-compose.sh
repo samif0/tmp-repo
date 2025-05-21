@@ -7,6 +7,8 @@ networks:
   frontend:
   production:
   staging:
+  backend:
+    internal: true
 
 services:
   nginx:
@@ -23,6 +25,7 @@ services:
       - frontend
       - production
       - staging
+      - backend
     restart: unless-stopped
   
   blackflow-prod:
@@ -51,6 +54,17 @@ services:
       - NODE_ENV=staging
     networks:
       - staging
+    restart: unless-stopped
+
+  auth:
+    build: ./blackflow/services/auth
+    dockerfile: Dockerfile
+    ports:
+      - "3003:3000"
+    environment:
+      - GIN_MODE=release
+    networks:
+      - backend
     restart: unless-stopped
 EOF
 
