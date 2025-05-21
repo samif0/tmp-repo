@@ -41,6 +41,7 @@ services:
       - "3001:3000"
     environment: 
       - NODE_ENV=production
+    user: "1000:1000"
     networks:
       - production
     restart: unless-stopped
@@ -55,6 +56,7 @@ services:
       - "3002:3000"
     environment: 
       - NODE_ENV=staging
+    user: "1000:1000"
     networks:
       - staging
     restart: unless-stopped
@@ -67,6 +69,7 @@ services:
       - "3003:3000"
     environment:
       - GIN_MODE=release
+    user: "1000:1000"
     networks:
       - backend
     restart: unless-stopped
