@@ -3,28 +3,24 @@
 cat >docker-compose.merged.yml <<'EOF'
 version: '3'
 
-networks:
-  frontend:
-  production:
-  staging:
-
 services:
   nginx:
     image: nginx:alpine
     ports:
       - "80:80"
-      - "8080:8080"
       - "443:443"
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
       - ./nginx/conf.d:/etc/nginx/conf.d:ro
       - ./nginx/ssl:/etc/nginx/ssl:ro
+    depends_on:
+      - blackflow-prod
+      - blackflow-staging
+      - auth-service
     networks:
-      - frontend
-      - production
-      - staging
+      - backend
     restart: unless-stopped
-  
+
   blackflow-prod:
     build:
       context: ./blackflow
@@ -36,9 +32,9 @@ services:
     environment: 
       - NODE_ENV=production
     networks:
-      - production
+      - backend
     restart: unless-stopped
-  
+
   blackflow-staging:
     build:
       context: ./blackflow
@@ -50,8 +46,22 @@ services:
     environment: 
       - NODE_ENV=staging
     networks:
-      - staging
+      - backend
     restart: unless-stopped
+
+  auth-service:
+    build:
+      context: ./auth-service
+      dockerfile: Dockerfile
+    expose:
+      - "8080"
+    networks:
+      - backend
+    restart: unless-stopped
+
+networks:
+  backend:
+    driver: bridge
 EOF
 
 echo "Docker Compose configuration created"
