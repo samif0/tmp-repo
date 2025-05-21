@@ -34,3 +34,12 @@ You can check out [the Next.js GitHub repository](https://github.com/vercel/next
 The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
 
 Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+
+## Auth Service
+
+A Go-based authentication service runs in its own container, only accessible to backend and nginx containers via the internal Docker network. External clients cannot call the auth service directly; instead, requests to `/api/auth/*` are proxied by nginx to the auth service.
+
+- Service code: `auth-service/`
+- Internal port: 8080
+- Not exposed to the public internet
+- Add your authentication logic in `auth-service/main.go`

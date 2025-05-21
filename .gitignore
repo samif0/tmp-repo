@@ -48,3 +48,9 @@ coverage/
 *.pid
 *.seed
 
+# Go Auth Service
+/auth-service/bin/
+/auth-service/*.exe
+/auth-service/*.out
+/auth-service/*.test
+
