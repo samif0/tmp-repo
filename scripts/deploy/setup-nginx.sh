@@ -1,8 +1,8 @@
 #!/bin/bash
 
-mkdir -p nginx/conf.d
+sudo mkdir -p nginx/conf.d
 
-./scripts/nginx/create-nginx-conf.sh
-./scripts/nginx/create-server-blocks.sh
+sudo ./scripts/nginx/create-nginx-conf.sh
+sudo ./scripts/nginx/create-server-blocks.sh
 
 echo "Nginx setup completed"

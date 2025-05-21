@@ -1,26 +1,36 @@
 #!/bin/bash
 
+# Install sudo if not present
+which sudo > /dev/null || apt-get update && apt-get install -y sudo
+
+# Create app directory with sudo if needed
+sudo mkdir -p ~/app
 cd ~/app
 
 if [ -d "blackflow" ]; then
   cd blackflow
-  git pull
+  sudo git pull
 else
-  git clone https://github.com/samif0/blackflow.git blackflow
+  sudo git clone https://github.com/samif0/blackflow.git blackflow
   cd blackflow
 fi
 
-cp docker-compose.yml ../ || echo "No docker-compose.yml to copy"
+sudo cp docker-compose.yml ../ || echo "No docker-compose.yml to copy"
 
 cd ..
 
-mv ~/docker-compose.prod.yml ./
-mv ~/nginx ./
+sudo mv ~/docker-compose.prod.yml ./
+sudo mv ~/nginx ./
 
-./scripts/cleanup/cleanup-docker.sh
+# Create scripts directory with proper permissions
+sudo mkdir -p scripts
+sudo cp -r blackflow/scripts/* scripts/
+sudo chmod -R 755 scripts
 
-docker-compose -f docker-compose.merged.yml -f docker-compose.prod.yml up -d --build
+sudo ./scripts/cleanup/cleanup-docker.sh
 
-docker image prune -af --force
+sudo docker-compose -f docker-compose.merged.yml -f docker-compose.prod.yml up -d --build
+
+sudo docker image prune -af --force
 
 echo "Consolidated deployment complete!"
