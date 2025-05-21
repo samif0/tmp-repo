@@ -106,16 +106,16 @@ jobs:
     
     - name: Ensure app directory exists
       run: |
-        ssh ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }} 'mkdir -p ~/app/nginx/ssl'
+        ssh ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }} 'sudo mkdir -p /home/ubuntu/app/nginx/ssl && sudo chown -R ubuntu:ubuntu /home/ubuntu/app'
     
     - name: Check if initial setup is needed
       id: check-setup
       run: |
-        SETUP_NEEDED=$(ssh ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }} "if [ -f ~/app/docker-compose.merged.yml ]; then echo 'false'; else echo 'true'; fi")
+        SETUP_NEEDED=$(ssh ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }} "if [ -f /home/ubuntu/app/docker-compose.merged.yml ]; then echo 'false'; else echo 'true'; fi")
         echo "setup_needed=$SETUP_NEEDED" >> $GITHUB_OUTPUT
         
         # Check if SSL certs exist and aren't expiring soon
-        SSH_OUTPUT=$(ssh ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }} "if [ -f ~/app/scripts/ssl/check-ssl-certs.sh ]; then chmod +x ~/app/scripts/ssl/check-ssl-certs.sh && ~/app/scripts/ssl/check-ssl-certs.sh; else if [ -f ~/app/nginx/ssl/cert.pem ] && [ -f ~/app/nginx/ssl/key.pem ]; then echo 'Certificates exist but expiration unknown'; else echo 'SSL certificates not found'; fi; fi")
+        SSH_OUTPUT=$(ssh ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }} "if [ -f /home/ubuntu/app/scripts/ssl/check-ssl-certs.sh ]; then chmod +x /home/ubuntu/app/scripts/ssl/check-ssl-certs.sh && /home/ubuntu/app/scripts/ssl/check-ssl-certs.sh; else if [ -f /home/ubuntu/app/nginx/ssl/cert.pem ] && [ -f /home/ubuntu/app/nginx/ssl/key.pem ]; then echo 'Certificates exist but expiration unknown'; else echo 'SSL certificates not found'; fi; fi")
         CERT_CODE=$?
         
         # Determine if SSL setup is needed based on both existence and expiration
@@ -139,54 +139,72 @@ jobs:
         scp scripts/ssl/*.sh ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }}:~/
         
         # Make sure app/scripts/ssl directory exists
-        ssh ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }} 'mkdir -p ~/app/scripts/ssl'
+        ssh ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }} 'sudo mkdir -p /home/ubuntu/app/scripts/ssl && sudo chown -R ubuntu:ubuntu /home/ubuntu/app/scripts'
         
         # Run the SSL management script
         ssh ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }} 'dos2unix ./manage-ssl-certs.sh && ./manage-ssl-certs.sh ${{ secrets.DOMAIN_NAME }} ${{ secrets.STAGING_DOMAIN_NAME }} ${{ secrets.CERTBOT_EMAIL }}'
         
-        # Copy the SSL management scripts to the app directory for future use
-        ssh ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }} 'cp ~/manage-ssl-certs.sh ~/check-ssl-certs.sh ~/renew-ssl-certs.sh ~/app/scripts/ssl/'
+        # Copy the SSL management scripts to the app directory for future use and ensure proper permissions
+        ssh ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }} 'cp ~/manage-ssl-certs.sh ~/check-ssl-certs.sh ~/renew-ssl-certs.sh /home/ubuntu/app/scripts/ssl/ && chmod +x /home/ubuntu/app/scripts/ssl/*.sh && sudo chown ubuntu:ubuntu /home/ubuntu/app/scripts/ssl/*.sh'
+        
+        # Ensure proper SSL certificate permissions if they exist
+        ssh ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }} 'if [ -d "/home/ubuntu/app/nginx/ssl" ]; then sudo chmod 600 /home/ubuntu/app/nginx/ssl/*.pem 2>/dev/null || true; sudo chown ubuntu:ubuntu /home/ubuntu/app/nginx/ssl/*.pem 2>/dev/null || true; fi'
   
     - name: Setup consolidated environment
       run: |
-        # Create necessary directories on server
-        ssh ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }} 'mkdir -p ~/app/scripts/deploy ~/app/scripts/nginx ~/app/scripts/cleanup ~/app/nginx/conf.d ~/app/nginx/ssl'
+        # Create all necessary directories on server and ensure ubuntu user has Docker permissions
+        ssh ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }} 'sudo mkdir -p /home/ubuntu/app/scripts/deploy /home/ubuntu/app/scripts/nginx /home/ubuntu/app/scripts/cleanup /home/ubuntu/app/scripts/ssl /home/ubuntu/app/nginx/conf.d /home/ubuntu/app/nginx/ssl /home/ubuntu/app/services && sudo chown -R ubuntu:ubuntu /home/ubuntu/app && sudo usermod -aG docker ubuntu'
+        
+        # Verify Docker permissions are effective
+        ssh ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }} 'if id ubuntu | grep -q docker; then echo "Docker group already effective"; else echo "Docker group added, will be effective on next login"; fi'
         
         # Copy all necessary files
-        scp -r scripts/* ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }}:~/app/scripts/
-        scp -r nginx/* ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }}:~/app/nginx/
-        scp docker-compose.prod.yml docker-compose.staging.yml ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }}:~/app/
+        scp -r scripts/* ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }}:/home/ubuntu/app/scripts/
+        scp -r nginx/* ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }}:/home/ubuntu/app/nginx/
+        scp docker-compose.prod.yml docker-compose.staging.yml ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }}:/home/ubuntu/app/
         
         # Fix line endings and make scripts executable on the server
-        ssh ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }} 'cd ~/app && sudo apt-get update && sudo apt-get install -y dos2unix && find scripts -name "*.sh" -type f -exec chmod +x {} \; -exec dos2unix {} \;'
+        ssh ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }} 'cd /home/ubuntu/app && sudo apt-get update && sudo apt-get install -y dos2unix && sudo find scripts -name "*.sh" -type f -exec chmod +x {} \; -exec dos2unix {} \; && sudo chown -R ubuntu:ubuntu /home/ubuntu/app/scripts'
         
         # Create docker-compose.merged.yml on the server
-        ssh ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }} 'cd ~/app && ./scripts/deploy/create-docker-compose.sh'
+        ssh ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }} 'cd /home/ubuntu/app && ./scripts/deploy/create-docker-compose.sh'
         
         # First time setup
         if [ "${{ steps.check-setup.outputs.setup_needed }}" = "true" ]; then
           echo "Performing initial setup..."
           
           # Clone repo and setup application
-          ssh ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }} 'cd ~/app && ./scripts/cleanup/cleanup-docker.sh && if [ ! -d "blackflow" ]; then git clone https://github.com/samif0/blackflow.git blackflow; fi && docker-compose -f docker-compose.merged.yml -f docker-compose.prod.yml build blackflow-prod auth && docker-compose -f docker-compose.merged.yml -f docker-compose.staging.yml build blackflow-staging && docker-compose -f docker-compose.merged.yml -f docker-compose.prod.yml -f docker-compose.staging.yml up -d'
+          ssh ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }} 'cd /home/ubuntu/app && ./scripts/cleanup/cleanup-docker.sh && if [ ! -d "blackflow" ]; then timeout 180 git clone https://github.com/samif0/blackflow.git blackflow || echo "Git clone timed out after 180 seconds"; fi && sudo docker-compose -f docker-compose.merged.yml -f docker-compose.prod.yml build blackflow-prod auth && sudo docker-compose -f docker-compose.merged.yml -f docker-compose.staging.yml build blackflow-staging && sudo docker-compose -f docker-compose.merged.yml -f docker-compose.prod.yml -f docker-compose.staging.yml up -d'
         else
           echo "Updating existing deployment..."
           # For normal deployments, just update the code and restart containers
-          ssh ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }} 'cd ~/app && cd blackflow && git pull && cd .. && docker-compose -f docker-compose.merged.yml -f docker-compose.prod.yml build blackflow-prod auth && docker-compose -f docker-compose.merged.yml -f docker-compose.staging.yml build blackflow-staging && docker-compose -f docker-compose.merged.yml -f docker-compose.prod.yml -f docker-compose.staging.yml up -d'
+          ssh ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }} 'cd /home/ubuntu/app && cd blackflow && timeout 120 git pull || echo "Git pull timed out after 120 seconds" && cd .. && sudo docker-compose -f docker-compose.merged.yml -f docker-compose.prod.yml build blackflow-prod auth && sudo docker-compose -f docker-compose.merged.yml -f docker-compose.staging.yml build blackflow-staging && sudo docker-compose -f docker-compose.merged.yml -f docker-compose.prod.yml -f docker-compose.staging.yml up -d'
         fi
         
         # Clean up
-        ssh ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }} 'cd ~/app && docker image prune -af --force'
+        ssh ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }} 'cd /home/ubuntu/app && sudo docker image prune -af --force'
  
     - name: Set up automated SSL certificate checks
       run: |
         # Create a cron job to check and renew certificates daily
-        ssh ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }} 'dos2unix ~/app/scripts/ssl/manage-ssl-certs.sh && (crontab -l 2>/dev/null || true; echo "0 3 * * * ~/app/scripts/ssl/manage-ssl-certs.sh") | crontab -'
+        ssh ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }} 'dos2unix /home/ubuntu/app/scripts/ssl/manage-ssl-certs.sh && (crontab -l 2>/dev/null || true; echo "0 3 * * * /home/ubuntu/app/scripts/ssl/manage-ssl-certs.sh") | crontab -'
         echo "Set up daily SSL certificate check at 3 AM"
     
     - name: Verify deployments
       run: |
         echo "Deployments completed. Verifying health endpoints..."
         sleep 15
-        curl -k https://${{ secrets.DOMAIN_NAME }}/api/health || echo "Could not reach production health endpoint"
-        curl -k https://staging.${{ secrets.DOMAIN_NAME }}/api/health || echo "Could not reach staging health endpoint"
+        PROD_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -k https://${{ secrets.DOMAIN_NAME }}/api/health || echo "failed")
+        STAGING_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -k https://staging.${{ secrets.DOMAIN_NAME }}/api/health || echo "failed")
+        
+        if [[ "$PROD_STATUS" == "200" ]]; then
+          echo "✅ Production endpoint is healthy (status: $PROD_STATUS)"
+        else
+          echo "⚠️ Warning: Production endpoint returned status: $PROD_STATUS"
+        fi
+        
+        if [[ "$STAGING_STATUS" == "200" ]]; then
+          echo "✅ Staging endpoint is healthy (status: $STAGING_STATUS)" 
+        else
+          echo "⚠️ Warning: Staging endpoint returned status: $STAGING_STATUS"
+        fi
