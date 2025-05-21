@@ -17,6 +17,7 @@ RUN apk --no-cache add ca-certificates
 WORKDIR /root/
 
 COPY --from=builder /app/auth-service .
+RUN chmod +x ./auth-service
 
 EXPOSE 3000
 

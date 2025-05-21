@@ -24,6 +24,9 @@ jobs:
       
       - name: Run tests
         run: npm test || echo "No tests available yet"
+      
+      - name: Install dos2unix
+        run: sudo apt-get update && sudo apt-get install -y dos2unix
   
   deploy-consolidated:
     name: Deploy to Consolidated Environment
@@ -34,6 +37,14 @@ jobs:
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
+    
+    - name: Install dos2unix
+      run: sudo apt-get update && sudo apt-get install -y dos2unix
+    
+    - name: Fix line endings in scripts
+      run: |
+        find scripts -name "*.sh" -type f -exec dos2unix {} \;
+        echo "Converted all shell scripts to Unix line endings"
     
     - name: Install SSH Key
       uses: shimataro/ssh-key-action@v2
@@ -80,6 +91,7 @@ jobs:
         export STAGING_DOMAIN_NAME="staging.${{ secrets.DOMAIN_NAME }}"
         
         chmod +x scripts/nginx/create-nginx-conf.sh scripts/nginx/create-server-blocks.sh
+        dos2unix scripts/nginx/create-nginx-conf.sh scripts/nginx/create-server-blocks.sh
         ./scripts/nginx/create-nginx-conf.sh
         
         cat > scripts/nginx/domain-variables.sh << EOF
@@ -88,6 +100,7 @@ jobs:
         export STAGING_DOMAIN_NAME="$STAGING_DOMAIN_NAME"
         EOF
         chmod +x scripts/nginx/domain-variables.sh
+        dos2unix scripts/nginx/domain-variables.sh
         
         ./scripts/nginx/create-server-blocks.sh
     
@@ -120,6 +133,7 @@ jobs:
       run: |
         echo "SSL certificates setup or renewal needed..."
         chmod +x scripts/ssl/certbot-setup.sh scripts/ssl/check-ssl-certs.sh scripts/ssl/renew-ssl-certs.sh scripts/ssl/manage-ssl-certs.sh
+        dos2unix scripts/ssl/certbot-setup.sh scripts/ssl/check-ssl-certs.sh scripts/ssl/renew-ssl-certs.sh scripts/ssl/manage-ssl-certs.sh
         
         # Copy all SSL management scripts to the server
         scp scripts/ssl/*.sh ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }}:~/
@@ -128,7 +142,7 @@ jobs:
         ssh ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }} 'mkdir -p ~/app/scripts/ssl'
         
         # Run the SSL management script
-        ssh ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }} './manage-ssl-certs.sh ${{ secrets.DOMAIN_NAME }} ${{ secrets.STAGING_DOMAIN_NAME }} ${{ secrets.CERTBOT_EMAIL }}'
+        ssh ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }} 'dos2unix ./manage-ssl-certs.sh && ./manage-ssl-certs.sh ${{ secrets.DOMAIN_NAME }} ${{ secrets.STAGING_DOMAIN_NAME }} ${{ secrets.CERTBOT_EMAIL }}'
         
         # Copy the SSL management scripts to the app directory for future use
         ssh ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }} 'cp ~/manage-ssl-certs.sh ~/check-ssl-certs.sh ~/renew-ssl-certs.sh ~/app/scripts/ssl/'
@@ -143,19 +157,22 @@ jobs:
         scp -r nginx/* ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }}:~/app/nginx/
         scp docker-compose.prod.yml docker-compose.staging.yml ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }}:~/app/
         
+        # Fix line endings and make scripts executable on the server
+        ssh ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }} 'cd ~/app && sudo apt-get update && sudo apt-get install -y dos2unix && find scripts -name "*.sh" -type f -exec chmod +x {} \; -exec dos2unix {} \;'
+        
         # Create docker-compose.merged.yml on the server
-        ssh ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }} 'cd ~/app && chmod +x ./scripts/deploy/*.sh ./scripts/nginx/*.sh ./scripts/cleanup/*.sh && ./scripts/deploy/create-docker-compose.sh'
+        ssh ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }} 'cd ~/app && ./scripts/deploy/create-docker-compose.sh'
         
         # First time setup
         if [ "${{ steps.check-setup.outputs.setup_needed }}" = "true" ]; then
           echo "Performing initial setup..."
           
           # Clone repo and setup application
-          ssh ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }} 'cd ~/app && ./scripts/cleanup/cleanup-docker.sh && if [ ! -d "blackflow" ]; then git clone https://github.com/samif0/blackflow.git blackflow; fi && docker-compose -f docker-compose.merged.yml -f docker-compose.prod.yml build blackflow-prod && docker-compose -f docker-compose.merged.yml -f docker-compose.staging.yml build blackflow-staging && docker-compose -f docker-compose.merged.yml -f docker-compose.prod.yml -f docker-compose.staging.yml up -d'
+          ssh ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }} 'cd ~/app && ./scripts/cleanup/cleanup-docker.sh && if [ ! -d "blackflow" ]; then git clone https://github.com/samif0/blackflow.git blackflow; fi && docker-compose -f docker-compose.merged.yml -f docker-compose.prod.yml build blackflow-prod auth && docker-compose -f docker-compose.merged.yml -f docker-compose.staging.yml build blackflow-staging && docker-compose -f docker-compose.merged.yml -f docker-compose.prod.yml -f docker-compose.staging.yml up -d'
         else
           echo "Updating existing deployment..."
           # For normal deployments, just update the code and restart containers
-          ssh ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }} 'cd ~/app && cd blackflow && git pull && cd .. && docker-compose -f docker-compose.merged.yml -f docker-compose.prod.yml build blackflow-prod && docker-compose -f docker-compose.merged.yml -f docker-compose.staging.yml build blackflow-staging && docker-compose -f docker-compose.merged.yml -f docker-compose.prod.yml -f docker-compose.staging.yml up -d'
+          ssh ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }} 'cd ~/app && cd blackflow && git pull && cd .. && docker-compose -f docker-compose.merged.yml -f docker-compose.prod.yml build blackflow-prod auth && docker-compose -f docker-compose.merged.yml -f docker-compose.staging.yml build blackflow-staging && docker-compose -f docker-compose.merged.yml -f docker-compose.prod.yml -f docker-compose.staging.yml up -d'
         fi
         
         # Clean up
@@ -164,7 +181,7 @@ jobs:
     - name: Set up automated SSL certificate checks
       run: |
         # Create a cron job to check and renew certificates daily
-        ssh ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }} '(crontab -l 2>/dev/null || true; echo "0 3 * * * ~/app/scripts/ssl/manage-ssl-certs.sh") | crontab -'
+        ssh ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }} 'dos2unix ~/app/scripts/ssl/manage-ssl-certs.sh && (crontab -l 2>/dev/null || true; echo "0 3 * * * ~/app/scripts/ssl/manage-ssl-certs.sh") | crontab -'
         echo "Set up daily SSL certificate check at 3 AM"
     
     - name: Verify deployments
