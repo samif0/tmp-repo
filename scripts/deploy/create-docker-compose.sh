@@ -1,5 +1,8 @@
 #!/bin/bash
 
+# Make all scripts executable
+find ~/app/scripts -name "*.sh" -type f -exec chmod +x {} \;
+
 cat >docker-compose.merged.yml <<'EOF'
 version: '3'
 
