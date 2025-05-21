@@ -57,8 +57,9 @@ services:
     restart: unless-stopped
 
   auth:
-    build: ./blackflow/services/auth
-    dockerfile: Dockerfile
+    build: 
+      context: ./blackflow/services/auth
+      dockerfile: Dockerfile
     ports:
       - "3003:3000"
     environment:
