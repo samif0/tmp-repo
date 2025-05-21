@@ -133,6 +133,11 @@ jobs:
         # Copy the SSL management scripts to the app directory for future use
         ssh ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }} 'cp ~/manage-ssl-certs.sh ~/check-ssl-certs.sh ~/renew-ssl-certs.sh ~/app/scripts/ssl/'
   
+    - name: Ensure all scripts are in Unix (LF) format on EC2
+      run: |
+        ssh ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }} 'sudo apt-get update && sudo apt-get install -y dos2unix'
+        ssh ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }} 'find ~/app -type f -name "*.sh" -exec dos2unix {} \;'
+  
     - name: Setup consolidated environment
       run: |
         # Create necessary directories on server
