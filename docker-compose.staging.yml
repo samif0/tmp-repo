@@ -1,0 +1,8 @@
+version: '3'
+services:
+  blackflow-staging:
+    environment:
+      - NODE_ENV=staging
+      - API_URL=
+      - AUTH_SECRET=
+      - DATABASE_URL=
