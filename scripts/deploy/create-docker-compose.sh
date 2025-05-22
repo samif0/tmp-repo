@@ -25,8 +25,6 @@ services:
     build:
       context: ./blackflow
       dockerfile: Dockerfile
-      args:
-        - NODE_ENV=production
     ports:
       - "3001:3000"
     environment: 
@@ -39,12 +37,22 @@ services:
     build:
       context: ./blackflow
       dockerfile: Dockerfile
-      args:
-        - NODE_ENV=staging
     ports:
       - "3002:3000"
     environment: 
       - NODE_ENV=staging
+    networks:
+      - backend
+    restart: unless-stopped
+
+  blackflow-dev:
+    build:
+      context: ./blackflow
+      dockerfile: Dockerfile.dev
+    ports:
+      - "3003:3000"
+    environment: 
+      - NODE_ENV=development
     networks:
       - backend
     restart: unless-stopped
